@@ -1,0 +1,9 @@
+{
+  "name": "com.t2f.core",
+  "displayName": "T2FCore",
+  "author": { "name": "qiu fei", "url": "https://unittt.github.io/T2FCore/" },
+  "version": "1.0.0",
+  "unity": "2022.3",
+  "description": "T2FCore 是基于HTFramework扩展的Unity核心框架模块，提供了完整的游戏开发基础设施，包含现代游戏框架所需的核心功能：依赖注入、实体系统、响应式编程等，是一个功能全面的Unity开发框架。",
+  "dependencies": {}
+}
