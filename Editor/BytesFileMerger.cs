@@ -10,11 +10,15 @@ namespace T2F.ConfigTable
 {
     internal class BytesFileMerger : AssetPostprocessor
     {
-        
         internal static void GenerateManually()
         {
-            var config =  MergeConfig.Instance;
-            GenerateCombinedFile(config);
+            var config = MergeConfig.Instance;
+            if (config == null) return;
+            
+            foreach (var mergeInfo in config.MergeInfos)
+            {
+                GenerateCombinedFile(mergeInfo);
+            }
         }
 
         private static void OnPostprocessAllAssets(
@@ -26,27 +30,53 @@ namespace T2F.ConfigTable
             var config = MergeConfig.Instance;
             if (config == null || !config.AutoGenerate) return;
 
-            if (importedAssets.Concat(movedAssets).Any(asset => IsTargetFile(asset, config)))
+            bool needsGeneration = false;
+            
+            // 检查每个配置项是否需要重新生成
+            foreach (var mergeInfo in config.MergeInfos)
             {
-                EditorApplication.delayCall += () => GenerateCombinedFile(config);
+                if (importedAssets.Concat(movedAssets).Any(asset => 
+                    IsTargetFile(asset, mergeInfo)))
+                {
+                    needsGeneration = true;
+                    break;
+                }
+            }
+
+            if (needsGeneration)
+            {
+                EditorApplication.delayCall += GenerateManually;
             }
         }
 
-        private static void GenerateCombinedFile(MergeConfig config)
+        private static void GenerateCombinedFile(MergeInfo mergeInfo)
         {
             try
             {
-                var files = Directory.GetFiles(config.InputFolder, "*.bytes", SearchOption.AllDirectories)
+                // 检查输入目录是否存在
+                if (!Directory.Exists(mergeInfo.InputFolder))
+                {
+                    Debug.LogWarning($"输入目录不存在: {mergeInfo.InputFolder}，跳过合并");
+                    return;
+                }
+
+                var files = Directory.GetFiles(mergeInfo.InputFolder, "*.bytes", SearchOption.AllDirectories)
                     .Where(p => !p.EndsWith(".meta"))
                     .OrderBy(p => p)
                     .ToList();
 
-                string newHash = CalculateFilesHash(files);
-                bool outputFileExists = File.Exists(config.OutputFile);
-
-                if (newHash == config.LastHash && outputFileExists)
+                if (files.Count == 0)
                 {
-                    Debug.Log("配置文件不变，跳过生成.");
+                    Debug.LogWarning($"在目录 {mergeInfo.InputFolder} 中没有找到.bytes文件，跳过合并");
+                    return;
+                }
+
+                string newHash = CalculateFilesHash(files);
+                bool outputFileExists = File.Exists(mergeInfo.OutputFile);
+
+                if (newHash == mergeInfo.LastHash && outputFileExists)
+                {
+                    Debug.Log($"配置文件未变化，跳过生成: {mergeInfo.OutputFile}");
                     return;
                 }
 
@@ -54,12 +84,12 @@ namespace T2F.ConfigTable
                 var fileDict = new Dictionary<string, byte[]>();
                 foreach (var file in files)
                 {
-                    string key = Path.GetFileNameWithoutExtension(GetRelativePath(file, config.InputFolder));
+                    string key = Path.GetFileNameWithoutExtension(GetRelativePath(file, mergeInfo.InputFolder));
                     fileDict[key] = File.ReadAllBytes(file);
                 }
 
                 // 确保输出目录存在
-                string outputDir = Path.GetDirectoryName(config.OutputFile);
+                string outputDir = Path.GetDirectoryName(mergeInfo.OutputFile);
                 if (!Directory.Exists(outputDir))
                 {
                     Directory.CreateDirectory(outputDir);
@@ -67,13 +97,16 @@ namespace T2F.ConfigTable
 
                 // 生成合并文件
                 byte[] mergedData = BytesFileHandler.PackBytes(fileDict);
-                File.WriteAllBytes(config.OutputFile, mergedData);
-                config.LastHash = newHash;
-                Debug.Log($"Merged {files.Count} files to {config.OutputFile}");
+                File.WriteAllBytes(mergeInfo.OutputFile, mergedData);
+                mergeInfo.LastHash = newHash;
+
+                // 标记配置已修改
+                EditorUtility.SetDirty(MergeConfig.Instance);
+                Debug.Log($"Merged {files.Count} files to {mergeInfo.OutputFile}");
             }
             catch (Exception e)
             {
-                Debug.LogError($"合并配置文件失败:{e}");
+                Debug.LogError($"合并配置文件失败: {e.Message}\n{e.StackTrace}");
             }
         }
 
@@ -96,9 +129,9 @@ namespace T2F.ConfigTable
             return Path.GetRelativePath(root, fullPath).Replace("\\", "/");
         }
 
-        private static bool IsTargetFile(string assetPath, MergeConfig config)
+        private static bool IsTargetFile(string assetPath, MergeInfo mergeInfo)
         {
-            return assetPath.StartsWith(config.InputFolder) 
+            return assetPath.StartsWith(mergeInfo.InputFolder) 
                 && assetPath.EndsWith(".bytes")
                 && !assetPath.EndsWith(".meta");
         }

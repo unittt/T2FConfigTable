@@ -1,15 +1,24 @@
-﻿using T2F.Core;
+﻿using System;
+using System.Collections.Generic;
+using T2F.Core;
+using UnityEngine;
 
 namespace T2F.ConfigTable
 {
-
-    [System.Serializable]
-    [ScriptableFilePath("Assets/T2FConfigTable/Editor/Asset/BytesMergeConfig.asset", ScriptableFileLocation.ProjectFolder)]
+    [Serializable]
+    [ScriptableFilePath("Assets/MergeConfig.asset")]
     internal class MergeConfig : T2FScriptableSingleton<MergeConfig>
     {
-        public string InputFolder = "Assets/T2FConfigTable/Res/Gen";
-        public string OutputFile = "Assets/Resources/CombinedBytes.bytes";
+        [SerializeField]
+        public List<MergeInfo> MergeInfos = new();
         public bool AutoGenerate = true;
+    }
+
+    [Serializable]
+    internal class MergeInfo
+    {
+        public string InputFolder;
+        public string OutputFile;
         public string LastHash;
     }
 }

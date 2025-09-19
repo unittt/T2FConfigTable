@@ -13,17 +13,38 @@ namespace T2F.ConfigTable
 {
 public partial class Tables
 {
-    public TbMapBean TbMapBean {get; }
+    public GameModule.TbGlobalConfig TbGlobalConfig {get; }
+    public GameModule.TbSevenDaySignBean TbSevenDaySignBean {get; }
+    public GameModule.TbLevelBean TbLevelBean {get; }
+    public GameModule.TbLevelLoopRuleBean TbLevelLoopRuleBean {get; }
+    public GameModule.TbGuideGroupBean TbGuideGroupBean {get; }
+    public GameModule.TbOfferChainBean TbOfferChainBean {get; }
+    public GameModule.TbWheelOfFortuneBean TbWheelOfFortuneBean {get; }
+    public GameModule.TbItemBean TbItemBean {get; }
 
     public Tables(System.Func<string, ByteBuf> loader)
     {
-        TbMapBean = new TbMapBean(loader("tbmapbean"));
+        TbGlobalConfig = new GameModule.TbGlobalConfig(loader("gamemodule_tbglobalconfig"));
+        TbSevenDaySignBean = new GameModule.TbSevenDaySignBean(loader("gamemodule_tbsevendaysignbean"));
+        TbLevelBean = new GameModule.TbLevelBean(loader("gamemodule_tblevelbean"));
+        TbLevelLoopRuleBean = new GameModule.TbLevelLoopRuleBean(loader("gamemodule_tblevellooprulebean"));
+        TbGuideGroupBean = new GameModule.TbGuideGroupBean(loader("gamemodule_tbguidegroupbean"));
+        TbOfferChainBean = new GameModule.TbOfferChainBean(loader("gamemodule_tbofferchainbean"));
+        TbWheelOfFortuneBean = new GameModule.TbWheelOfFortuneBean(loader("gamemodule_tbwheeloffortunebean"));
+        TbItemBean = new GameModule.TbItemBean(loader("gamemodule_tbitembean"));
         ResolveRef();
     }
     
     private void ResolveRef()
     {
-        TbMapBean.ResolveRef(this);
+        TbGlobalConfig.ResolveRef(this);
+        TbSevenDaySignBean.ResolveRef(this);
+        TbLevelBean.ResolveRef(this);
+        TbLevelLoopRuleBean.ResolveRef(this);
+        TbGuideGroupBean.ResolveRef(this);
+        TbOfferChainBean.ResolveRef(this);
+        TbWheelOfFortuneBean.ResolveRef(this);
+        TbItemBean.ResolveRef(this);
     }
 }
 
