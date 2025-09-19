@@ -4,7 +4,7 @@ namespace T2F.ConfigTable
 {
 
     [System.Serializable]
-    [ScriptableFilePath("Assets/T2FConfigTable/Editor/Asset/BytesMergeConfig.asset")]
+    [ScriptableFilePath("Assets/T2FConfigTable/Editor/Asset/BytesMergeConfig.asset", ScriptableFileLocation.ProjectFolder)]
     internal class MergeConfig : EditorScriptableSingleton<MergeConfig>
     {
         public string InputFolder = "Assets/T2FConfigTable/Res/Gen";
