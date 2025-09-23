@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using UnityEditorInternal;
 
-namespace T2F.ConfigTable
+namespace T2F.ConfigTable.EditorExtensions
 {
     internal class MergeConfigEditor : EditorWindow
     {

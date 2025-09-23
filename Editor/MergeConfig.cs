@@ -1,9 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using T2F.Core;
+using T2F.Core.EditorExtensions;
 using UnityEngine;
 
-namespace T2F.ConfigTable
+namespace T2F.ConfigTable.EditorExtensions
 {
     [Serializable]
     [ScriptableFilePath("Assets/MergeConfig.asset")]
