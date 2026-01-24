@@ -1,30 +1,25 @@
-using UnityEditor;
-using UnityEngine;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using T2F.Core.EditorExtensions;
+using UnityEditor;
 using UnityEditorInternal;
+using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace T2F.ConfigTable.EditorExtensions
 {
     /// <summary>
-    /// 配置合并工具编辑器窗口
+    /// 配置表设置 - ProjectSettings 提供程序
     /// </summary>
-    internal class MergeConfigEditor : EditorWindow
+    internal sealed class ConfigTableSettingsProvider : T2FSettingsProvider<ConfigTableSettings>
     {
-        private MergeConfig _mergeConfig;
-        private SerializedObject _serializedObject;
+        private ReorderableList _reorderableList;
         private SerializedProperty _mergeInfosProperty;
         private SerializedProperty _autoGenerateProperty;
-        private ReorderableList _reorderableList;
-        private Vector2 _scrollPosition;
 
-        private const float SmallButtonWidth = 50f;
-        
-        private static GUIStyle _headerStyle;
-        private static GUIStyle HeaderStyle => _headerStyle ??= new GUIStyle(EditorStyles.boldLabel)
-        {
-            fontSize = 11
-        };
+        protected override string Title => "Config Table";
+        protected override string Description => "配置表合并工具\n用于将多个 .bytes 文件合并为单个配置文件";
 
         private static GUIStyle _infoStyle;
         private static GUIStyle InfoStyle => _infoStyle ??= new GUIStyle(EditorStyles.miniLabel)
@@ -32,29 +27,31 @@ namespace T2F.ConfigTable.EditorExtensions
             normal = { textColor = Color.gray }
         };
 
-        [MenuItem("T2F/Config Table Manager")]
-        public static void ShowWindow()
-        {
-            var window = GetWindow<MergeConfigEditor>();
-            window.titleContent = new GUIContent("配置表合并工具");
-            window.minSize = new Vector2(550, 450);
-        }
+        private ConfigTableSettingsProvider(string path, SettingsScope scopes)
+            : base(path, scopes) { }
 
-        private void OnEnable()
+        [SettingsProvider]
+        public static SettingsProvider CreateSettingsProvider()
         {
-            _mergeConfig = MergeConfig.instance;
-            _serializedObject = new SerializedObject(_mergeConfig);
-            _mergeInfosProperty = _serializedObject.FindProperty("MergeInfos");
-            _autoGenerateProperty = _serializedObject.FindProperty("AutoGenerate");
-
-            InitializeReorderableList();
-        }
-
-        private void InitializeReorderableList()
-        {
-            _reorderableList = new ReorderableList(_serializedObject, _mergeInfosProperty, true, true, true, true)
+            var provider = new ConfigTableSettingsProvider(
+                "Project/T2F/Config Table",
+                SettingsScope.Project
+            )
             {
-                drawHeaderCallback = rect => EditorGUI.LabelField(rect, "合并配置列表", HeaderStyle),
+                label = "Config Table",
+                keywords = new HashSet<string>(new[] { "T2F", "Config", "Table", "Merge", "Bytes" })
+            };
+            return provider;
+        }
+
+        protected override void OnSettingsActivate(string searchContext, VisualElement rootElement)
+        {
+            _mergeInfosProperty = SerializedObject.FindProperty("MergeInfos");
+            _autoGenerateProperty = SerializedObject.FindProperty("AutoGenerate");
+
+            _reorderableList = new ReorderableList(SerializedObject, _mergeInfosProperty, true, true, true, true)
+            {
+                drawHeaderCallback = rect => EditorGUI.LabelField(rect, "合并配置列表", EditorStyles.boldLabel),
                 elementHeight = EditorGUIUtility.singleLineHeight * 5 + 14,
                 drawElementCallback = DrawElement,
                 onAddCallback = OnAddElement,
@@ -62,18 +59,59 @@ namespace T2F.ConfigTable.EditorExtensions
             };
         }
 
+        protected override void DrawSettingsGUI()
+        {
+            _reorderableList.DoLayoutList();
+
+            EditorGUILayout.Space(10);
+
+            // 自动生成选项
+            EditorGUILayout.PropertyField(_autoGenerateProperty, new GUIContent("自动生成", "当 .bytes 文件变化时自动合并"));
+
+            EditorGUILayout.Space(15);
+
+            // 操作按钮
+            EditorGUILayout.BeginHorizontal();
+
+            using (new EditorGUI.DisabledScope(!IsAnyConfigValid()))
+            {
+                if (GUILayout.Button("合并所有配置", GUILayout.Height(28)))
+                {
+                    ExecuteMergeAll();
+                }
+            }
+
+            if (GUILayout.Button("刷新状态", GUILayout.Height(28), GUILayout.Width(80)))
+            {
+                // 触发重绘
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            ShowStatusHelpBox();
+        }
+
+        protected override void ResetToDefault()
+        {
+            Settings.MergeInfos.Clear();
+            Settings.AutoGenerate = true;
+        }
+
+        #region ReorderableList 绘制
+
         private void DrawElement(Rect rect, int index, bool isActive, bool isFocused)
         {
             var element = _mergeInfosProperty.GetArrayElementAtIndex(index);
-            var mergeInfo = _mergeConfig.MergeInfos[index];
+            var mergeInfo = Settings.MergeInfos[index];
             rect.y += 2;
 
             float lineHeight = EditorGUIUtility.singleLineHeight;
+            float buttonWidth = 50f;
             float y = rect.y;
 
             // 第一行：名称 + 单项合并按钮
-            var nameRect = new Rect(rect.x, y, rect.width - SmallButtonWidth - 5, lineHeight);
-            var mergeButtonRect = new Rect(nameRect.xMax + 5, y, SmallButtonWidth, lineHeight);
+            var nameRect = new Rect(rect.x, y, rect.width - buttonWidth - 5, lineHeight);
+            var mergeButtonRect = new Rect(nameRect.xMax + 5, y, buttonWidth, lineHeight);
 
             var nameProp = element.FindPropertyRelative("Name");
             EditorGUI.PropertyField(nameRect, nameProp, new GUIContent("名称"));
@@ -87,29 +125,29 @@ namespace T2F.ConfigTable.EditorExtensions
             y += lineHeight + 2;
 
             // 第二行：输入目录
-            var inputRect = new Rect(rect.x, y, rect.width - SmallButtonWidth - 5, lineHeight);
-            var inputButtonRect = new Rect(inputRect.xMax + 5, y, SmallButtonWidth, lineHeight);
+            var inputRect = new Rect(rect.x, y, rect.width - buttonWidth - 5, lineHeight);
+            var inputButtonRect = new Rect(inputRect.xMax + 5, y, buttonWidth, lineHeight);
 
             var inputFolderProp = element.FindPropertyRelative("InputFolder");
             EditorGUI.PropertyField(inputRect, inputFolderProp, new GUIContent("输入目录"));
 
             if (GUI.Button(inputButtonRect, "选择", EditorStyles.miniButton))
             {
-                SelectFolder(index);
+                SelectFolder(inputFolderProp);
             }
 
             y += lineHeight + 2;
 
             // 第三行：输出文件
-            var outputRect = new Rect(rect.x, y, rect.width - SmallButtonWidth - 5, lineHeight);
-            var outputButtonRect = new Rect(outputRect.xMax + 5, y, SmallButtonWidth, lineHeight);
+            var outputRect = new Rect(rect.x, y, rect.width - buttonWidth - 5, lineHeight);
+            var outputButtonRect = new Rect(outputRect.xMax + 5, y, buttonWidth, lineHeight);
 
             var outputFileProp = element.FindPropertyRelative("OutputFile");
             EditorGUI.PropertyField(outputRect, outputFileProp, new GUIContent("输出文件"));
 
             if (GUI.Button(outputButtonRect, "选择", EditorStyles.miniButton))
             {
-                SelectFile(index);
+                SelectFile(outputFileProp);
             }
 
             y += lineHeight + 2;
@@ -125,6 +163,26 @@ namespace T2F.ConfigTable.EditorExtensions
             var timeRect = new Rect(rect.x, y, rect.width, lineHeight);
             EditorGUI.LabelField(timeRect, "更新时间", mergeInfo.GetFormattedUpdateTime(), InfoStyle);
         }
+
+        private void OnAddElement(ReorderableList list)
+        {
+            RecordAndSave("Add merge config");
+            Settings.MergeInfos.Add(new MergeInfo());
+        }
+
+        private void OnRemoveElement(ReorderableList list)
+        {
+            var mergeInfo = Settings.MergeInfos[list.index];
+            if (EditorUtility.DisplayDialog("删除配置", $"确定要删除配置 \"{mergeInfo.Name}\" 吗？", "删除", "取消"))
+            {
+                RecordAndSave("Remove merge config");
+                Settings.MergeInfos.RemoveAt(list.index);
+            }
+        }
+
+        #endregion
+
+        #region 辅助方法
 
         private string GetStatusText(MergeInfo mergeInfo)
         {
@@ -149,69 +207,8 @@ namespace T2F.ConfigTable.EditorExtensions
             return $"{outputStatus} | {currentFileCount} 个文件";
         }
 
-        private void OnAddElement(ReorderableList list)
+        private void SelectFolder(SerializedProperty inputFolderProp)
         {
-            _mergeConfig.MergeInfos.Add(new MergeInfo());
-            EditorUtility.SetDirty(_mergeConfig);
-        }
-
-        private void OnRemoveElement(ReorderableList list)
-        {
-            var mergeInfo = _mergeConfig.MergeInfos[list.index];
-            if (EditorUtility.DisplayDialog("删除配置",
-                $"确定要删除配置 \"{mergeInfo.Name}\" 吗？", "删除", "取消"))
-            {
-                _mergeConfig.MergeInfos.RemoveAt(list.index);
-                EditorUtility.SetDirty(_mergeConfig);
-            }
-        }
-
-        private void OnGUI()
-        {
-            if (_serializedObject == null) return;
-
-            _serializedObject.Update();
-            _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition);
-
-            // 绘制可排序列表
-            _reorderableList.DoLayoutList();
-
-            EditorGUILayout.Space(10);
-
-            // 自动生成选项
-            EditorGUILayout.PropertyField(_autoGenerateProperty, new GUIContent("自动生成", "当 .bytes 文件变化时自动合并"));
-
-            EditorGUILayout.Space(15);
-
-            // 操作按钮
-            EditorGUILayout.BeginHorizontal();
-
-            using (new EditorGUI.DisabledScope(!IsAnyConfigValid()))
-            {
-                if (GUILayout.Button("合并所有配置", GUILayout.Height(28)))
-                {
-                    ExecuteMergeAll();
-                }
-            }
-
-            if (GUILayout.Button("刷新状态", GUILayout.Height(28), GUILayout.Width(80)))
-            {
-                Repaint();
-            }
-
-            EditorGUILayout.EndHorizontal();
-
-            ShowStatusHelpBox();
-            EditorGUILayout.EndScrollView();
-
-            _serializedObject.ApplyModifiedProperties();
-        }
-
-        private void SelectFolder(int index)
-        {
-            var element = _mergeInfosProperty.GetArrayElementAtIndex(index);
-            var inputFolderProp = element.FindPropertyRelative("InputFolder");
-
             var path = EditorUtility.OpenFolderPanel("选择输入目录",
                 GetValidDirectory(inputFolderProp.stringValue), "");
 
@@ -221,12 +218,8 @@ namespace T2F.ConfigTable.EditorExtensions
             }
         }
 
-        private void SelectFile(int index)
+        private void SelectFile(SerializedProperty outputFileProp)
         {
-            var element = _mergeInfosProperty.GetArrayElementAtIndex(index);
-            var outputFileProp = element.FindPropertyRelative("OutputFile");
-
-            // 安全获取目录
             string directory = Application.dataPath;
             string currentValue = outputFileProp.stringValue;
             if (!string.IsNullOrEmpty(currentValue))
@@ -281,16 +274,22 @@ namespace T2F.ConfigTable.EditorExtensions
 
         private bool IsAnyConfigValid()
         {
-            return _mergeConfig.MergeInfos.Any(info =>
+            return Settings.MergeInfos.Any(info =>
                 Directory.Exists(info.InputFolder) &&
                 !string.IsNullOrEmpty(info.OutputFile));
+        }
+
+        private bool IsConfigValid(MergeInfo info)
+        {
+            return Directory.Exists(info.InputFolder) &&
+                   !string.IsNullOrEmpty(info.OutputFile);
         }
 
         private void ExecuteMergeAll()
         {
             try
             {
-                _serializedObject.ApplyModifiedProperties();
+                SerializedObject.ApplyModifiedProperties();
                 BytesFileMerger.GenerateManually();
                 EditorUtility.DisplayDialog("合并完成", "所有配置文件已成功合并", "确定");
                 AssetDatabase.Refresh();
@@ -304,8 +303,8 @@ namespace T2F.ConfigTable.EditorExtensions
 
         private void ShowStatusHelpBox()
         {
-            var validConfigs = _mergeConfig.MergeInfos.Count(IsConfigValid);
-            var totalConfigs = _mergeConfig.MergeInfos.Count;
+            var validConfigs = Settings.MergeInfos.Count(IsConfigValid);
+            var totalConfigs = Settings.MergeInfos.Count;
 
             EditorGUILayout.Space(5);
 
@@ -327,10 +326,6 @@ namespace T2F.ConfigTable.EditorExtensions
             }
         }
 
-        private bool IsConfigValid(MergeInfo info)
-        {
-            return Directory.Exists(info.InputFolder) &&
-                   !string.IsNullOrEmpty(info.OutputFile);
-        }
+        #endregion
     }
 }

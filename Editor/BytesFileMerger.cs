@@ -21,7 +21,7 @@ namespace T2F.ConfigTable.EditorExtensions
         /// </summary>
         internal static void GenerateManually()
         {
-            var config = MergeConfig.instance;
+            var config = ConfigTableSettings.instance;
             if (config == null) return;
 
             foreach (var mergeInfo in config.MergeInfos)
@@ -40,7 +40,7 @@ namespace T2F.ConfigTable.EditorExtensions
             if (mergeInfo == null) return;
 
             GenerateCombinedFile(mergeInfo);
-            MergeConfig.instance.SaveConfig();
+            ConfigTableSettings.instance.SaveConfig();
         }
 
         /// <summary>
@@ -52,7 +52,7 @@ namespace T2F.ConfigTable.EditorExtensions
             string[] movedAssets,
             string[] movedFromAssetPaths)
         {
-            var config = MergeConfig.instance;
+            var config = ConfigTableSettings.instance;
             if (config == null || !config.AutoGenerate) return;
 
             // 防止重复注册

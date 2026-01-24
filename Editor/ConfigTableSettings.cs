@@ -6,10 +6,10 @@ using UnityEngine;
 namespace T2F.ConfigTable.EditorExtensions
 {
     /// <summary>
-    /// 配置表合并设置
+    /// 配置表设置
     /// </summary>
     [FilePath("ProjectSettings/T2FConfigTableSettings.asset", FilePathAttribute.Location.ProjectFolder)]
-    internal class MergeConfig : ScriptableSingleton<MergeConfig>
+    internal class ConfigTableSettings : ScriptableSingleton<ConfigTableSettings>
     {
         /// <summary>
         /// 合并配置列表
