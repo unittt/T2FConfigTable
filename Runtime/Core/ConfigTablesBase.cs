@@ -8,6 +8,7 @@ namespace T2F.ConfigTable
     /// <summary>
     /// 配置表容器基类
     /// 使用泛型实现框架与业务解耦，业务层的 Tables 类继承此基类即可
+    /// 支持立即加载和延迟加载两种模式
     /// </summary>
     /// <typeparam name="TSelf">继承类自身的类型</typeparam>
     public abstract class ConfigTablesBase<TSelf> where TSelf : ConfigTablesBase<TSelf>, new()
@@ -23,32 +24,27 @@ namespace T2F.ConfigTable
         public static bool IsInitialized => Instance != null;
 
         /// <summary>
-        /// 使用字节数组字典初始化
+        /// 原始字节数据（延迟加载模式使用）
         /// </summary>
-        /// <param name="bytesDic">表名到字节数组的映射</param>
-        public static void Init(Dictionary<string, byte[]> bytesDic)
-        {
-            if (bytesDic == null)
-            {
-                Debug.LogError("[ConfigTables] bytesDic is null");
-                return;
-            }
-
-            Instance = new TSelf();
-            Instance.OnLoad(tableName =>
-            {
-                if (!bytesDic.TryGetValue(tableName, out var bytes))
-                {
-                    Debug.LogError($"[ConfigTables] Table not found: {tableName}");
-                    return null;
-                }
-                return new ByteBuf(bytes);
-            });
-            Instance.OnResolveRef();
-        }
+        protected Dictionary<string, byte[]> _bytesDic;
 
         /// <summary>
-        /// 使用合并后的字节数组初始化
+        /// 已加载的表名集合
+        /// </summary>
+        private readonly HashSet<string> _loadedTables = new();
+
+        /// <summary>
+        /// 是否为延迟加载模式
+        /// </summary>
+        public bool IsLazyMode { get; private set; }
+
+        /// <summary>
+        /// 是否已解析引用
+        /// </summary>
+        public bool IsRefResolved { get; private set; }
+
+        /// <summary>
+        /// 使用合并后的字节数组初始化（立即加载所有表）
         /// </summary>
         /// <param name="mergedBytes">合并后的字节数组</param>
         public static void Init(byte[] mergedBytes)
@@ -64,11 +60,182 @@ namespace T2F.ConfigTable
         }
 
         /// <summary>
+        /// 使用字节数组字典初始化（立即加载所有表）
+        /// </summary>
+        /// <param name="bytesDic">表名到字节数组的映射</param>
+        public static void Init(Dictionary<string, byte[]> bytesDic)
+        {
+            if (bytesDic == null)
+            {
+                Debug.LogError("[ConfigTables] bytesDic is null");
+                return;
+            }
+
+            Instance = new TSelf();
+            Instance._bytesDic = bytesDic;
+            Instance.IsLazyMode = false;
+
+            // 立即加载所有表
+            Instance.OnLoad(tableName =>
+            {
+                if (!bytesDic.TryGetValue(tableName, out var bytes))
+                {
+                    Debug.LogError($"[ConfigTables] Table not found: {tableName}");
+                    return null;
+                }
+                Instance._loadedTables.Add(tableName);
+                return new ByteBuf(bytes);
+            });
+
+            // 立即解析引用
+            Instance.OnResolveRef();
+            Instance.IsRefResolved = true;
+        }
+
+        /// <summary>
+        /// 延迟加载模式初始化（仅存储字节数据，按需加载表）
+        /// </summary>
+        /// <param name="mergedBytes">合并后的字节数组</param>
+        public static void InitLazy(byte[] mergedBytes)
+        {
+            if (mergedBytes == null || mergedBytes.Length == 0)
+            {
+                Debug.LogError("[ConfigTables] mergedBytes is null or empty");
+                return;
+            }
+
+            var bytesDic = BytesFileHandler.UnpackBytes(mergedBytes);
+            InitLazy(bytesDic);
+        }
+
+        /// <summary>
+        /// 延迟加载模式初始化（仅存储字节数据，按需加载表）
+        /// </summary>
+        /// <param name="bytesDic">表名到字节数组的映射</param>
+        public static void InitLazy(Dictionary<string, byte[]> bytesDic)
+        {
+            if (bytesDic == null)
+            {
+                Debug.LogError("[ConfigTables] bytesDic is null");
+                return;
+            }
+
+            Instance = new TSelf();
+            Instance._bytesDic = bytesDic;
+            Instance.IsLazyMode = true;
+            Instance.IsRefResolved = false;
+        }
+
+        /// <summary>
+        /// 延迟加载单个表
+        /// </summary>
+        /// <typeparam name="T">表类型</typeparam>
+        /// <param name="field">表字段引用</param>
+        /// <param name="tableName">表名（对应数据文件名，不含扩展名）</param>
+        /// <param name="factory">表构造函数</param>
+        /// <returns>加载后的表实例</returns>
+        protected T LoadTableLazy<T>(ref T field, string tableName, Func<ByteBuf, T> factory) where T : class
+        {
+            if (field != null)
+                return field;
+
+            if (_bytesDic == null)
+            {
+                Debug.LogError($"[ConfigTables] BytesDic is null, cannot load table: {tableName}");
+                return null;
+            }
+
+            if (!_bytesDic.TryGetValue(tableName, out var bytes))
+            {
+                Debug.LogError($"[ConfigTables] Table not found: {tableName}");
+                return null;
+            }
+
+            field = factory(new ByteBuf(bytes));
+            _loadedTables.Add(tableName);
+            return field;
+        }
+
+        /// <summary>
+        /// 检查表是否已加载
+        /// </summary>
+        /// <param name="tableName">表名</param>
+        /// <returns>是否已加载</returns>
+        public bool IsTableLoaded(string tableName)
+        {
+            return _loadedTables.Contains(tableName);
+        }
+
+        /// <summary>
+        /// 获取已加载的表数量
+        /// </summary>
+        public int LoadedTableCount => _loadedTables.Count;
+
+        /// <summary>
+        /// 获取总表数量
+        /// </summary>
+        public int TotalTableCount => _bytesDic?.Count ?? 0;
+
+        /// <summary>
+        /// 加载所有未加载的表（延迟模式下使用）
+        /// </summary>
+        public void LoadAllTables()
+        {
+            if (!IsLazyMode)
+                return;
+
+            OnLoad(tableName =>
+            {
+                if (_loadedTables.Contains(tableName))
+                    return null; // 已加载的表跳过
+
+                if (!_bytesDic.TryGetValue(tableName, out var bytes))
+                {
+                    Debug.LogError($"[ConfigTables] Table not found: {tableName}");
+                    return null;
+                }
+                _loadedTables.Add(tableName);
+                return new ByteBuf(bytes);
+            });
+        }
+
+        /// <summary>
+        /// 解析所有引用关系（延迟模式下需要手动调用）
+        /// 注意：调用前应确保所有相关表已加载
+        /// </summary>
+        public void ResolveAllRefs()
+        {
+            if (IsRefResolved)
+                return;
+
+            // 确保所有表都已加载
+            LoadAllTables();
+
+            OnResolveRef();
+            IsRefResolved = true;
+        }
+
+        /// <summary>
         /// 释放实例
         /// </summary>
         public static void Release()
         {
+            if (Instance != null)
+            {
+                Instance._bytesDic?.Clear();
+                Instance._bytesDic = null;
+                Instance._loadedTables.Clear();
+            }
             Instance = null;
+        }
+
+        /// <summary>
+        /// 释放原始字节数据（节省内存，但之后无法再延迟加载新表）
+        /// </summary>
+        public void ReleaseRawBytes()
+        {
+            _bytesDic?.Clear();
+            _bytesDic = null;
         }
 
         /// <summary>
