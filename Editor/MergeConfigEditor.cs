@@ -43,7 +43,7 @@ namespace T2F.ConfigTable.EditorExtensions
 
         private void OnEnable()
         {
-            _mergeConfig = MergeConfig.Instance;
+            _mergeConfig = MergeConfig.instance;
             _serializedObject = new SerializedObject(_mergeConfig);
             _mergeInfosProperty = _serializedObject.FindProperty("MergeInfos");
             _autoGenerateProperty = _serializedObject.FindProperty("AutoGenerate");

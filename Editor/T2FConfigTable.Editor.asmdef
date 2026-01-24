@@ -2,9 +2,7 @@
     "name": "T2FConfigTable.Editor",
     "rootNamespace": "",
     "references": [
-        "GUID:4cd986e9cb4157640adb29a7b8e10232",
-        "GUID:4ce237699fdfeee489bf5fd3e1100e56",
-        "GUID:2689717caffeecc4187a398dc2c23a26"
+        "GUID:4cd986e9cb4157640adb29a7b8e10232"
     ],
     "includePlatforms": [
         "Editor"

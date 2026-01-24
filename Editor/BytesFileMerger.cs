@@ -12,7 +12,7 @@ namespace T2F.ConfigTable.EditorExtensions
     {
         internal static void GenerateManually()
         {
-            var config = MergeConfig.Instance;
+            var config = MergeConfig.instance;
             if (config == null) return;
             
             foreach (var mergeInfo in config.MergeInfos)
@@ -27,7 +27,7 @@ namespace T2F.ConfigTable.EditorExtensions
             string[] movedAssets,
             string[] movedFromAssetPaths)
         {
-            var config = MergeConfig.Instance;
+            var config = MergeConfig.instance;
             if (config == null || !config.AutoGenerate) return;
 
             bool needsGeneration = false;
@@ -101,7 +101,7 @@ namespace T2F.ConfigTable.EditorExtensions
                 mergeInfo.LastHash = newHash;
 
                 // 标记配置已修改
-                EditorUtility.SetDirty(MergeConfig.Instance);
+                EditorUtility.SetDirty(MergeConfig.instance);
                 Debug.Log($"Merged {files.Count} files to {mergeInfo.OutputFile}");
             }
             catch (Exception e)
