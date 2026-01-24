@@ -25,7 +25,7 @@ namespace T2F.ConfigTable.EditorExtensions
         /// <summary>
         /// 保存配置
         /// </summary>
-        public void Save()
+        public void SaveConfig()
         {
             Save(true);
         }
@@ -37,6 +37,11 @@ namespace T2F.ConfigTable.EditorExtensions
     [Serializable]
     internal class MergeInfo
     {
+        /// <summary>
+        /// 配置名称/描述
+        /// </summary>
+        public string Name = "New Config";
+
         /// <summary>
         /// 输入目录（包含 .bytes 文件的目录）
         /// </summary>
@@ -50,6 +55,42 @@ namespace T2F.ConfigTable.EditorExtensions
         /// <summary>
         /// 上次生成时的哈希值（用于增量检测）
         /// </summary>
+        [HideInInspector]
         public string LastHash;
+
+        /// <summary>
+        /// 上次更新时间
+        /// </summary>
+        [HideInInspector]
+        public string LastUpdateTime;
+
+        /// <summary>
+        /// 上次合并的文件数量
+        /// </summary>
+        [HideInInspector]
+        public int LastFileCount;
+
+        /// <summary>
+        /// 获取格式化的更新时间
+        /// </summary>
+        public string GetFormattedUpdateTime()
+        {
+            if (string.IsNullOrEmpty(LastUpdateTime))
+                return "从未更新";
+
+            if (DateTime.TryParse(LastUpdateTime, out var dt))
+                return dt.ToString("yyyy-MM-dd HH:mm:ss");
+
+            return LastUpdateTime;
+        }
+
+        /// <summary>
+        /// 更新时间戳
+        /// </summary>
+        public void UpdateTimestamp(int fileCount)
+        {
+            LastUpdateTime = DateTime.Now.ToString("O");
+            LastFileCount = fileCount;
+        }
     }
 }
