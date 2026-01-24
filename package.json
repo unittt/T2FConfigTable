@@ -1,7 +1,7 @@
 {
   "name": "com.t2f.configtable",
   "displayName": "T2F Config Table",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "unity": "2022.3",
   "description": "A lightweight config table framework based on Luban, supporting binary file merging, auto-generation, and editor tools.",
   "author": {
