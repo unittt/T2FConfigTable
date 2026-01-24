@@ -12,7 +12,7 @@ namespace T2F.ConfigTable.EditorExtensions
     /// 配置表文件合并器
     /// 监听 .bytes 文件变化并自动合并
     /// </summary>
-    internal class BytesFileMerger : AssetPostprocessor
+    internal class BytesFileMergerProcessor : AssetPostprocessor
     {
         private static bool _isGenerating;
 

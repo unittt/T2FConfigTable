@@ -118,7 +118,7 @@ namespace T2F.ConfigTable.EditorExtensions
 
             if (GUI.Button(mergeButtonRect, "合并", EditorStyles.miniButton))
             {
-                BytesFileMerger.GenerateSingle(mergeInfo);
+                BytesFileMergerProcessor.GenerateSingle(mergeInfo);
                 AssetDatabase.Refresh();
             }
 
@@ -290,7 +290,7 @@ namespace T2F.ConfigTable.EditorExtensions
             try
             {
                 SerializedObject.ApplyModifiedProperties();
-                BytesFileMerger.GenerateManually();
+                BytesFileMergerProcessor.GenerateManually();
                 EditorUtility.DisplayDialog("合并完成", "所有配置文件已成功合并", "确定");
                 AssetDatabase.Refresh();
             }
