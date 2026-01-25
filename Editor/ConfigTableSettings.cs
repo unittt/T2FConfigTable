@@ -8,7 +8,7 @@ namespace T2F.ConfigTable.EditorExtensions
     /// <summary>
     /// 配置表设置
     /// </summary>
-    [FilePath("ProjectSettings/T2FConfigTableSettings.asset", FilePathAttribute.Location.ProjectFolder)]
+    [FilePath("ProjectSettings/T2F/ConfigTableSettings.asset", FilePathAttribute.Location.ProjectFolder)]
     internal class ConfigTableSettings : ScriptableSingleton<ConfigTableSettings>
     {
         /// <summary>
