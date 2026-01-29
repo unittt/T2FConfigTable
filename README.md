@@ -229,7 +229,11 @@ internal static Dictionary<string, byte[]> UnpackBytes(byte[] mergedBytes);
 
 ### 生成命令示例
 
-在 Luban 生成命令中，通过 `--customTemplateDir` 参数指向框架的 Templates 目录：
+在 Luban 生成命令中，通过 `--customTemplateDir` 参数指向框架的 Templates 目录。
+
+**注意**：模板路径根据安装方式不同：
+- **Package Manager 安装**：`Packages/com.t2f.configtable/Templates`
+- **Assets 目录安装**：`Assets/T2FConfigTable/Templates`
 
 ```batch
 @echo off
@@ -241,7 +245,12 @@ set LUBAN_DLL=%WORKSPACE%\Tools\Luban\Luban.dll
 set CONF_ROOT=%WORKSPACE%\DataTables
 set OUTPUTCODEDIR=%WORKSPACE%\Assets\Scripts\Runtime\ConfigTable\Gen
 set OUTPUTDATADIR=%WORKSPACE%\Assets\Res\ConfigTable\Gen
-set TEMPLATEDIR=%WORKSPACE%\Assets\T2FConfigTable\Templates
+
+:: 根据安装方式选择模板路径
+:: Package Manager 安装使用此路径：
+set TEMPLATEDIR=%WORKSPACE%\Packages\com.t2f.configtable\Templates
+:: Assets 目录安装使用此路径：
+:: set TEMPLATEDIR=%WORKSPACE%\Assets\T2FConfigTable\Templates
 
 dotnet %LUBAN_DLL% ^
     -t client ^
