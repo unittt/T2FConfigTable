@@ -1,0 +1,38 @@
+using Luban;
+using System;
+using T2F.ConfigTable;
+
+{{namespace_with_grace_begin __namespace}}
+public partial class {{__name}} : ConfigTablesBase<{{__name}}>
+{
+    {{~for table in __tables ~}}
+    private {{table.full_name}} _{{format_property_name __code_style table.name}};
+    {{~end~}}
+
+    {{~for table in __tables ~}}
+{{~if table.comment != '' ~}}
+    /// <summary>
+    /// {{escape_comment table.comment}}
+    /// </summary>
+{{~end~}}
+    public {{table.full_name}} {{format_property_name __code_style table.name}} => _{{format_property_name __code_style table.name}} ?? LoadTableLazy(ref _{{format_property_name __code_style table.name}}, "{{table.output_data_file}}", bytes => new {{table.full_name}}(bytes));
+    {{~end~}}
+
+    protected override void OnLoad(Func<string, ByteBuf> loader)
+    {
+        {{~for table in __tables ~}}
+        var {{format_property_name __code_style table.name}}Bytes = loader("{{table.output_data_file}}");
+        if ({{format_property_name __code_style table.name}}Bytes != null)
+            _{{format_property_name __code_style table.name}} = new {{table.full_name}}({{format_property_name __code_style table.name}}Bytes);
+        {{~end~}}
+    }
+
+    protected override void OnResolveRef()
+    {
+        {{~for table in __tables ~}}
+        _{{format_property_name __code_style table.name}}?.ResolveRef(this);
+        {{~end~}}
+    }
+}
+
+{{namespace_with_grace_end __namespace}}

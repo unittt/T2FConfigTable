@@ -28,19 +28,21 @@ T2FConfigTable/
 │   ├── BytesFileMerger.cs      # 自动合并处理器
 │   ├── MergeConfig.cs          # 合并配置
 │   └── MergeConfigEditor.cs    # 编辑器窗口
-└── Res/Gen/                    # 数据文件输出目录
+└── Templates/                  # Luban 自定义模板（内置）
+    └── cs-bin/
+        └── tables.sbn          # Tables 类生成模板（支持延迟加载）
 ```
 
 ## 快速开始
 
 ### 1. 生成配置表代码
 
-使用 Luban 生成配置表代码，让 `Tables` 类继承 `ConfigTablesBase<Tables>`。
+使用 Luban 生成配置表代码。框架提供了内置模板（`T2FConfigTable/Templates/cs-bin/tables.sbn`），会自动让生成的 `Tables` 类继承 `ConfigTablesBase<Tables>` 并支持延迟加载。
 
-**使用自定义模板支持延迟加载：**
+**生成的代码示例：**
 
 ```csharp
-// 生成的代码（放在项目中，不在框架内）
+// 生成的代码
 namespace T2F.ConfigTable
 {
     public partial class Tables : ConfigTablesBase<Tables>
@@ -193,31 +195,105 @@ internal static Dictionary<string, byte[]> UnpackBytes(byte[] mergedBytes);
 
 ## Luban 模板配置
 
-框架提供自定义 Luban 模板以支持延迟加载。将模板放置在 `DataTables/Templates/cs-bin/tables.sbn`：
+框架内置了自定义 Luban 模板以支持延迟加载，位于 `T2FConfigTable/Templates/cs-bin/tables.sbn`。
 
-```
-DataTables/
-├── Templates/
-│   └── cs-bin/
-│       └── tables.sbn    # 自定义模板
-├── luban.conf
-└── gen - c#.bat
-```
+### 模板功能
 
-生成命令需包含 `--customTemplateDir` 参数：
+- 生成的 `Tables` 类继承 `ConfigTablesBase<Tables>`
+- 自动实现延迟加载属性访问器
+- 实现 `OnLoad()` 方法用于立即加载
+- 实现 `OnResolveRef()` 方法用于解析表间引用
+
+### 生成命令示例
+
+在 Luban 生成命令中，通过 `--customTemplateDir` 参数指向框架的 Templates 目录：
 
 ```batch
-dotnet Luban.dll ^
+@echo off
+cd /d "%~dp0"
+
+set WORKSPACE=..
+
+set LUBAN_DLL=%WORKSPACE%\Tools\Luban\Luban.dll
+set CONF_ROOT=%WORKSPACE%\DataTables
+set OUTPUTCODEDIR=%WORKSPACE%\Assets\Scripts\Runtime\ConfigTable\Gen
+set OUTPUTDATADIR=%WORKSPACE%\Assets\Res\ConfigTable\Gen
+set TEMPLATEDIR=%WORKSPACE%\Assets\T2FConfigTable\Templates
+
+dotnet %LUBAN_DLL% ^
     -t client ^
     -c cs-bin ^
-    --conf luban.conf ^
-    --customTemplateDir Templates ^
-    ...
+    -d bin ^
+    --conf %CONF_ROOT%\luban.conf ^
+    --customTemplateDir %TEMPLATEDIR% ^
+    -x cs-bin.outputCodeDir=%OUTPUTCODEDIR% ^
+    -x outputDataDir=%OUTPUTDATADIR% ^
+    -x pathValidator.rootDir=%WORKSPACE% ^
+    -x inputDataDir=%CONF_ROOT%\Datas
+
+pause
 ```
 
-## 配置文件位置
+### 关键参数说明
 
-合并配置保存在：`ProjectSettings/T2FConfigTableSettings.asset`
+| 参数 | 说明 |
+|------|------|
+| `--customTemplateDir` | 指向框架内的 Templates 目录 |
+| `-x cs-bin.outputCodeDir` | 生成的代码输出目录（放在项目中） |
+| `-x outputDataDir` | 生成的数据文件输出目录 |
+
+## 模板定制
+
+### 模板结构
+
+框架内置的模板位于 `T2FConfigTable/Templates/cs-bin/tables.sbn`，使用 Scriban 模板语法。
+
+**核心功能：**
+
+1. **延迟加载属性**：每个表都生成属性访问器，首次访问时自动加载
+```csharp
+public {{table.full_name}} {{table.name}} =>
+    _{{table.name}} ?? LoadTableLazy(ref _{{table.name}}, "{{table.output_data_file}}",
+        bytes => new {{table.full_name}}(bytes));
+```
+
+2. **立即加载方法**：`OnLoad()` 在 `Init()` 时一次性加载所有表
+```csharp
+protected override void OnLoad(Func<string, ByteBuf> loader)
+{
+    var tableBytes = loader("tablename");
+    if (tableBytes != null)
+        _table = new TableType(tableBytes);
+}
+```
+
+3. **引用解析方法**：`OnResolveRef()` 处理表间引用关系
+```csharp
+protected override void OnResolveRef()
+{
+    _table?.ResolveRef(this);
+}
+```
+
+### 自定义模板
+
+如需修改生成逻辑，可以编辑 `T2FConfigTable/Templates/cs-bin/tables.sbn` 模板文件。模板使用 Luban 提供的变量：
+
+| 变量 | 类型 | 说明 |
+|------|------|------|
+| `__name` | string | Tables 类名 |
+| `__namespace` | string | 命名空间 |
+| `__tables` | array | 所有表的定义数组 |
+| `table.name` | string | 表名 |
+| `table.full_name` | string | 表的完整类名 |
+| `table.output_data_file` | string | 数据文件名（不含扩展名） |
+| `table.comment` | string | 表的注释 |
+
+**Scriban 语法参考：**
+- `{{~ ... ~}}` - 去除空白
+- `{{for item in items}}...{{end}}` - 循环
+- `{{if condition}}...{{end}}` - 条件判断
+- `{{format_property_name style name}}` - 格式化函数
 
 ## 依赖
 

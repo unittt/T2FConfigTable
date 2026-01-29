@@ -26,7 +26,7 @@ namespace T2F.ConfigTable
         /// <summary>
         /// 原始字节数据（延迟加载模式使用）
         /// </summary>
-        protected Dictionary<string, byte[]> _bytesDic;
+        protected Dictionary<string, byte[]> BytesDic;
 
         /// <summary>
         /// 已加载的表名集合
@@ -72,7 +72,7 @@ namespace T2F.ConfigTable
             }
 
             Instance = new TSelf();
-            Instance._bytesDic = bytesDic;
+            Instance.BytesDic = bytesDic;
             Instance.IsLazyMode = false;
 
             // 立即加载所有表
@@ -120,10 +120,12 @@ namespace T2F.ConfigTable
                 return;
             }
 
-            Instance = new TSelf();
-            Instance._bytesDic = bytesDic;
-            Instance.IsLazyMode = true;
-            Instance.IsRefResolved = false;
+            Instance = new TSelf
+            {
+                BytesDic = bytesDic,
+                IsLazyMode = true,
+                IsRefResolved = false
+            };
         }
 
         /// <summary>
@@ -139,13 +141,13 @@ namespace T2F.ConfigTable
             if (field != null)
                 return field;
 
-            if (_bytesDic == null)
+            if (BytesDic == null)
             {
                 Debug.LogError($"[ConfigTables] BytesDic is null, cannot load table: {tableName}");
                 return null;
             }
 
-            if (!_bytesDic.TryGetValue(tableName, out var bytes))
+            if (!BytesDic.TryGetValue(tableName, out var bytes))
             {
                 Debug.LogError($"[ConfigTables] Table not found: {tableName}");
                 return null;
@@ -174,7 +176,7 @@ namespace T2F.ConfigTable
         /// <summary>
         /// 获取总表数量
         /// </summary>
-        public int TotalTableCount => _bytesDic?.Count ?? 0;
+        public int TotalTableCount => BytesDic?.Count ?? 0;
 
         /// <summary>
         /// 加载所有未加载的表（延迟模式下使用）
@@ -189,7 +191,7 @@ namespace T2F.ConfigTable
                 if (_loadedTables.Contains(tableName))
                     return null; // 已加载的表跳过
 
-                if (!_bytesDic.TryGetValue(tableName, out var bytes))
+                if (!BytesDic.TryGetValue(tableName, out var bytes))
                 {
                     Debug.LogError($"[ConfigTables] Table not found: {tableName}");
                     return null;
@@ -222,8 +224,8 @@ namespace T2F.ConfigTable
         {
             if (Instance != null)
             {
-                Instance._bytesDic?.Clear();
-                Instance._bytesDic = null;
+                Instance.BytesDic?.Clear();
+                Instance.BytesDic = null;
                 Instance._loadedTables.Clear();
             }
             Instance = null;
@@ -234,8 +236,8 @@ namespace T2F.ConfigTable
         /// </summary>
         public void ReleaseRawBytes()
         {
-            _bytesDic?.Clear();
-            _bytesDic = null;
+            BytesDic?.Clear();
+            BytesDic = null;
         }
 
         /// <summary>
