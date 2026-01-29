@@ -434,12 +434,28 @@ namespace T2F.ConfigTable
 
         private void SelectFile(SerializedProperty outputFileProp)
         {
-            string defaultPath = GetValidDirectory(Path.GetDirectoryName(outputFileProp.stringValue));
+            string defaultPath = GetDirectoryFromPath(outputFileProp.stringValue);
             string path = EditorUtility.SaveFilePanel("选择输出文件", defaultPath, "merged_config", "bytes");
-            
+
             if (!string.IsNullOrEmpty(path))
             {
                 outputFileProp.stringValue = ConvertToProjectPath(path);
+            }
+        }
+
+        private string GetDirectoryFromPath(string filePath)
+        {
+            if (string.IsNullOrEmpty(filePath))
+                return Application.dataPath;
+
+            try
+            {
+                string directory = Path.GetDirectoryName(filePath);
+                return GetValidDirectory(directory);
+            }
+            catch
+            {
+                return Application.dataPath;
             }
         }
 
