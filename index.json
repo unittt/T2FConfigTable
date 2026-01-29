@@ -1,0 +1,9 @@
+{
+  "packages": {
+    "com.t2f.configtable": {
+      "versions": {
+        "1.0.0": {}
+      }
+    }
+  }
+}
