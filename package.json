@@ -15,7 +15,5 @@
     "binary",
     "data"
   ],
-  "dependencies": {
-    "com.code-philosophy.luban": "https://gitee.com/focus-creative-games/luban_unity.git"
-  }
+  "dependencies": {}
 }

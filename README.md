@@ -28,31 +28,28 @@ T2FConfigTable/
         └── tables.sbn          # Tables 类生成模板（支持延迟加载）
 ```
 
-**注意**：Luban 运行时库（BeanBase、ByteBuf 等）通过 Git URL 依赖自动引入，无需手动管理。
+**注意**：本框架依赖 Luban 运行时库，需要先安装 Luban Unity 包。
 
 ## 安装
 
 ### 通过 Package Manager 安装
 
+**步骤 1：安装 Luban Unity 运行时库**
+
 1. 打开 Unity 编辑器，菜单栏选择 `Window > Package Manager`
 2. 点击左上角 `+` 按钮，选择 `Install package from git URL...`
 3. 输入以下地址并点击 `Install`：
 ```
+https://gitee.com/focus-creative-games/luban_unity.git
+```
+
+**步骤 2：安装 T2FConfigTable**
+
+1. 再次点击 `+` 按钮，选择 `Install package from git URL...`
+2. 输入以下地址并点击 `Install`：
+```
 https://github.com/unittt/T2FConfigTable.git
 ```
-
-Unity 会自动下载 T2FConfigTable 及其依赖的 Luban Unity 包。
-
-**指定版本安装：**
-```
-https://github.com/unittt/T2FConfigTable.git#v1.0.0
-```
-
-### 验证安装
-
-安装完成后，在 Package Manager 窗口中应该能看到：
-- **T2F Config Table** - 本框架
-- **Luban** (com.code-philosophy.luban) - 运行时库依赖
 
 ## 快速开始
 
