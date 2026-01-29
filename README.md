@@ -202,6 +202,8 @@ internal static Dictionary<string, byte[]> UnpackBytes(byte[] mergedBytes);
 
 ### Config Table Manager
 
+![ConfigTable Settings](.github/images/settings.png)
+
 菜单路径：`T2F > Config Table Manager`
 
 功能：

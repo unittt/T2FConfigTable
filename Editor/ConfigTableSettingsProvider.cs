@@ -13,12 +13,13 @@ namespace T2F.ConfigTable
     /// </summary>
     internal sealed class ConfigTableSettingsProvider : SettingsProvider
     {
+        private const string SettingsPath = "Project/T2F/Config Table";
         private const float ButtonWidth = 50f;
         private const float VerticalSpacing = 2f;
         private const float LineHeightMultiplier = 5f;
         private const string ConfigTableLabel = "Config Table";
         private const string ConfigDescription = "配置表合并工具\n用于将多个 .bytes 文件合并为单个配置文件";
-        
+
         private ReorderableList _reorderableList;
         private SerializedProperty _mergeInfosProperty;
         private SerializedProperty _autoGenerateProperty;
@@ -32,6 +33,15 @@ namespace T2F.ConfigTable
             wordWrap = true
         };
 
+        /// <summary>
+        /// 通过菜单打开 Config Table Manager
+        /// </summary>
+        [MenuItem("T2F/Config Table Manager")]
+        public static void OpenConfigTableManager()
+        {
+            SettingsService.OpenProjectSettings(SettingsPath);
+        }
+
         private ConfigTableSettingsProvider(string path, SettingsScope scopes, IEnumerable<string> keywords = null)
             : base(path, scopes, keywords)
         {
@@ -41,7 +51,7 @@ namespace T2F.ConfigTable
         public static SettingsProvider CreateSettingsProvider()
         {
             var provider = new ConfigTableSettingsProvider(
-                "Project/T2F/Config Table",
+                SettingsPath,
                 SettingsScope.Project,
                 new HashSet<string>(new[] { "T2F", "Config", "Table", "Merge", "Bytes" })
             )
