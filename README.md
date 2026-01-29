@@ -171,16 +171,6 @@ public void ReleaseRawBytes();                // 释放原始字节数据
 public static void Release();                 // 释放实例
 ```
 
-### BytesFileHandler
-
-```csharp
-// 打包多个文件为单个二进制块（编辑器使用）
-internal static byte[] PackBytes(Dictionary<string, byte[]> fileDict);
-
-// 解包二进制块（运行时使用）
-internal static Dictionary<string, byte[]> UnpackBytes(byte[] mergedBytes);
-```
-
 ## 延迟加载使用场景
 
 | 场景 | 推荐模式 | 说明 |
