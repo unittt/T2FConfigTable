@@ -2,7 +2,7 @@
     "name": "T2FConfigTable.Runtime",
     "rootNamespace": "",
     "references": [
-        "GUID:93d76e105e6c60e469fdfab5b672f0f6"
+        "Luban.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

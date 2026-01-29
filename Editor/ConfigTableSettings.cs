@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
-namespace T2F.ConfigTable.EditorExtensions
+namespace T2F.ConfigTable
 {
     /// <summary>
     /// 配置表设置

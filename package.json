@@ -3,7 +3,7 @@
   "displayName": "T2F Config Table",
   "version": "1.0.0",
   "unity": "2022.3",
-  "description": "A lightweight config table framework based on Luban, supporting binary file merging, auto-generation, and editor tools.",
+  "description": "基于Luban的轻量级配置表框架，支持二进制文件合并、自动生成和编辑器工具.",
   "author": {
     "name": "qiu fei",
     "url": "https://unittt.github.io/T2FConfigTable/"
@@ -15,5 +15,7 @@
     "binary",
     "data"
   ],
-  "dependencies": {}
+  "dependencies": {
+    "com.code-philosophy.luban": "https://gitee.com/focus-creative-games/luban_unity.git"
+  }
 }

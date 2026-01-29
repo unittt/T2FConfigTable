@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 
-namespace T2F.ConfigTable.EditorExtensions
+namespace T2F.ConfigTable
 {
     /// <summary>
     /// 配置表文件合并器

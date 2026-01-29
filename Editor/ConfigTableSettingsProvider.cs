@@ -1,79 +1,156 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using T2F.Core.EditorExtensions;
 using UnityEditor;
 using UnityEditorInternal;
 using UnityEngine;
 using UnityEngine.UIElements;
 
-namespace T2F.ConfigTable.EditorExtensions
+namespace T2F.ConfigTable
 {
     /// <summary>
     /// 配置表设置 - ProjectSettings 提供程序
     /// </summary>
-    internal sealed class ConfigTableSettingsProvider : T2FSettingsProvider<ConfigTableSettings>
+    internal sealed class ConfigTableSettingsProvider : SettingsProvider
     {
+        private const float ButtonWidth = 50f;
+        private const float VerticalSpacing = 2f;
+        private const float LineHeightMultiplier = 5f;
+        private const string ConfigTableLabel = "Config Table";
+        private const string ConfigDescription = "配置表合并工具\n用于将多个 .bytes 文件合并为单个配置文件";
+        
         private ReorderableList _reorderableList;
         private SerializedProperty _mergeInfosProperty;
         private SerializedProperty _autoGenerateProperty;
-
-        protected override string Title => "Config Table";
-        protected override string Description => "配置表合并工具\n用于将多个 .bytes 文件合并为单个配置文件";
+        private SerializedObject _serializedObject;
+        private ConfigTableSettings _settings;
 
         private static GUIStyle _infoStyle;
         private static GUIStyle InfoStyle => _infoStyle ??= new GUIStyle(EditorStyles.miniLabel)
         {
-            normal = { textColor = Color.gray }
+            normal = { textColor = Color.gray },
+            wordWrap = true
         };
 
-        private ConfigTableSettingsProvider(string path, SettingsScope scopes)
-            : base(path, scopes) { }
+        private ConfigTableSettingsProvider(string path, SettingsScope scopes, IEnumerable<string> keywords = null)
+            : base(path, scopes, keywords)
+        {
+        }
 
         [SettingsProvider]
         public static SettingsProvider CreateSettingsProvider()
         {
             var provider = new ConfigTableSettingsProvider(
                 "Project/T2F/Config Table",
-                SettingsScope.Project
+                SettingsScope.Project,
+                new HashSet<string>(new[] { "T2F", "Config", "Table", "Merge", "Bytes" })
             )
             {
-                label = "Config Table",
-                keywords = new HashSet<string>(new[] { "T2F", "Config", "Table", "Merge", "Bytes" })
+                label = ConfigTableLabel
             };
             return provider;
         }
 
-        protected override void OnSettingsActivate(string searchContext, VisualElement rootElement)
+        public override void OnActivate(string searchContext, VisualElement rootElement)
         {
-            _mergeInfosProperty = SerializedObject.FindProperty("MergeInfos");
-            _autoGenerateProperty = SerializedObject.FindProperty("AutoGenerate");
+            InitializeSettings();
+            InitializeReorderableList();
+        }
 
-            _reorderableList = new ReorderableList(SerializedObject, _mergeInfosProperty, true, true, true, true)
+        public override void OnDeactivate()
+        {
+            _serializedObject?.Dispose();
+            _serializedObject = null;
+            _reorderableList = null;
+        }
+
+        public override void OnGUI(string searchContext)
+        {
+            if (!ValidateSettings())
             {
-                drawHeaderCallback = rect => EditorGUI.LabelField(rect, "合并配置列表", EditorStyles.boldLabel),
-                elementHeight = EditorGUIUtility.singleLineHeight * 5 + 14,
-                drawElementCallback = DrawElement,
-                onAddCallback = OnAddElement,
-                onRemoveCallback = OnRemoveElement
+                EditorGUILayout.HelpBox("设置文件加载失败", MessageType.Error);
+                return;
+            }
+
+            _serializedObject.Update();
+            DrawUI();
+        }
+
+        #region Initialization Methods
+
+        private void InitializeSettings()
+        {
+            _settings = ConfigTableSettings.instance;
+            _serializedObject = new SerializedObject(_settings);
+            _mergeInfosProperty = _serializedObject.FindProperty("MergeInfos");
+            _autoGenerateProperty = _serializedObject.FindProperty("AutoGenerate");
+        }
+
+        private void InitializeReorderableList()
+        {
+            _reorderableList = new ReorderableList(_serializedObject, _mergeInfosProperty, 
+                draggable: true, displayHeader: true, displayAddButton: true, displayRemoveButton: true)
+            {
+                drawHeaderCallback = DrawListHeader,
+                elementHeight = EditorGUIUtility.singleLineHeight * LineHeightMultiplier + 14,
+                drawElementCallback = DrawListElement,
+                onAddCallback = OnListElementAdded,
+                onRemoveCallback = OnListElementRemoved
             };
         }
 
-        protected override void DrawSettingsGUI()
+        private bool ValidateSettings()
+        {
+            return _serializedObject != null && _settings != null;
+        }
+
+        #endregion
+
+        #region UI Drawing Methods
+
+        private void DrawUI()
+        {
+            EditorGUILayout.Space(5);
+            DrawHeader();
+            EditorGUILayout.Space(10);
+            DrawSettings();
+            ApplyModifiedProperties();
+        }
+
+        private void DrawHeader()
+        {
+            EditorGUILayout.LabelField(ConfigTableLabel, EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(ConfigDescription, EditorStyles.wordWrappedMiniLabel);
+        }
+
+        private void DrawSettings()
+        {
+            DrawReorderableList();
+            EditorGUILayout.Space(10);
+            DrawAutoGenerateOption();
+            EditorGUILayout.Space(15);
+            DrawActionButtons();
+            DrawStatusBox();
+            EditorGUILayout.Space(15);
+            DrawResetButton();
+        }
+
+        private void DrawReorderableList()
         {
             _reorderableList.DoLayoutList();
+        }
 
-            EditorGUILayout.Space(10);
+        private void DrawAutoGenerateOption()
+        {
+            EditorGUILayout.PropertyField(_autoGenerateProperty, 
+                new GUIContent("自动生成", "当 .bytes 文件变化时自动合并"));
+        }
 
-            // 自动生成选项
-            EditorGUILayout.PropertyField(_autoGenerateProperty, new GUIContent("自动生成", "当 .bytes 文件变化时自动合并"));
-
-            EditorGUILayout.Space(15);
-
-            // 操作按钮
+        private void DrawActionButtons()
+        {
             EditorGUILayout.BeginHorizontal();
 
-            using (new EditorGUI.DisabledScope(!IsAnyConfigValid()))
+            using (new EditorGUI.DisabledScope(!HasValidConfigurations()))
             {
                 if (GUILayout.Button("合并所有配置", GUILayout.Height(28)))
                 {
@@ -83,50 +160,85 @@ namespace T2F.ConfigTable.EditorExtensions
 
             if (GUILayout.Button("刷新状态", GUILayout.Height(28), GUILayout.Width(80)))
             {
-                // 触发重绘
+                RefreshStatus();
             }
 
             EditorGUILayout.EndHorizontal();
-
-            ShowStatusHelpBox();
         }
 
-        protected override void ResetToDefault()
+        private void DrawStatusBox()
         {
-            Settings.MergeInfos.Clear();
-            Settings.AutoGenerate = true;
+            EditorGUILayout.Space(5);
+            var statusMessage = GetStatusMessage();
+            var messageType = GetStatusMessageType();
+            EditorGUILayout.HelpBox(statusMessage, messageType);
         }
 
-        #region ReorderableList 绘制
+        private void DrawResetButton()
+        {
+            if (GUILayout.Button("重置为默认值"))
+            {
+                ShowResetConfirmationDialog();
+            }
+        }
 
-        private void DrawElement(Rect rect, int index, bool isActive, bool isFocused)
+        #endregion
+
+        #region ReorderableList Callbacks
+
+        private void DrawListHeader(Rect rect)
+        {
+            EditorGUI.LabelField(rect, "合并配置列表", EditorStyles.boldLabel);
+        }
+
+        private void DrawListElement(Rect rect, int index, bool isActive, bool isFocused)
         {
             var element = _mergeInfosProperty.GetArrayElementAtIndex(index);
-            var mergeInfo = Settings.MergeInfos[index];
-            rect.y += 2;
-
-            float lineHeight = EditorGUIUtility.singleLineHeight;
-            float buttonWidth = 50f;
+            var mergeInfo = _settings.MergeInfos[index];
+            
+            rect.y += VerticalSpacing;
             float y = rect.y;
+            float lineHeight = EditorGUIUtility.singleLineHeight;
+            float contentWidth = rect.width - ButtonWidth - 5;
 
-            // 第一行：名称 + 单项合并按钮
-            var nameRect = new Rect(rect.x, y, rect.width - buttonWidth - 5, lineHeight);
-            var mergeButtonRect = new Rect(nameRect.xMax + 5, y, buttonWidth, lineHeight);
+            // 第一行：名称 + 合并按钮
+            y = DrawNameRow(rect, element, mergeInfo, y, lineHeight, contentWidth);
+            
+            // 第二行：输入目录
+            y = DrawInputFolderRow(rect, element, y, lineHeight, contentWidth);
+            
+            // 第三行：输出文件
+            y = DrawOutputFileRow(rect, element, y, lineHeight, contentWidth);
+            
+            // 第四行：状态信息
+            y = DrawStatusRow(rect, mergeInfo, y, lineHeight);
+            
+            // 第五行：更新时间
+            DrawUpdateTimeRow(rect, mergeInfo, y, lineHeight);
+        }
+
+        private float DrawNameRow(Rect rect, SerializedProperty element, MergeInfo mergeInfo,
+            float y, float lineHeight, float contentWidth)
+        {
+            var nameRect = new Rect(rect.x, y, contentWidth, lineHeight);
+            var mergeButtonRect = new Rect(nameRect.xMax + 5, y, ButtonWidth, lineHeight);
 
             var nameProp = element.FindPropertyRelative("Name");
             EditorGUI.PropertyField(nameRect, nameProp, new GUIContent("名称"));
 
             if (GUI.Button(mergeButtonRect, "合并", EditorStyles.miniButton))
             {
-                BytesFileMergerProcessor.GenerateSingle(mergeInfo);
-                AssetDatabase.Refresh();
+                ExecuteSingleMerge(mergeInfo);
             }
 
-            y += lineHeight + 2;
+            return y + lineHeight + VerticalSpacing;
+        }
 
-            // 第二行：输入目录
-            var inputRect = new Rect(rect.x, y, rect.width - buttonWidth - 5, lineHeight);
-            var inputButtonRect = new Rect(inputRect.xMax + 5, y, buttonWidth, lineHeight);
+        private float DrawInputFolderRow(Rect rect, SerializedProperty element,
+            float y, float lineHeight, float contentWidth)
+        {
+            var inputRect = new Rect(rect.x, y, contentWidth, lineHeight);
+            var inputButtonRect = new Rect(inputRect.xMax + 5, y, ButtonWidth, lineHeight);
 
             var inputFolderProp = element.FindPropertyRelative("InputFolder");
             EditorGUI.PropertyField(inputRect, inputFolderProp, new GUIContent("输入目录"));
@@ -136,11 +248,14 @@ namespace T2F.ConfigTable.EditorExtensions
                 SelectFolder(inputFolderProp);
             }
 
-            y += lineHeight + 2;
+            return y + lineHeight + VerticalSpacing;
+        }
 
-            // 第三行：输出文件
-            var outputRect = new Rect(rect.x, y, rect.width - buttonWidth - 5, lineHeight);
-            var outputButtonRect = new Rect(outputRect.xMax + 5, y, buttonWidth, lineHeight);
+        private float DrawOutputFileRow(Rect rect, SerializedProperty element,
+            float y, float lineHeight, float contentWidth)
+        {
+            var outputRect = new Rect(rect.x, y, contentWidth, lineHeight);
+            var outputButtonRect = new Rect(outputRect.xMax + 5, y, ButtonWidth, lineHeight);
 
             var outputFileProp = element.FindPropertyRelative("OutputFile");
             EditorGUI.PropertyField(outputRect, outputFileProp, new GUIContent("输出文件"));
@@ -150,146 +265,63 @@ namespace T2F.ConfigTable.EditorExtensions
                 SelectFile(outputFileProp);
             }
 
-            y += lineHeight + 2;
+            return y + lineHeight + VerticalSpacing;
+        }
 
-            // 第四行：状态信息
+        private float DrawStatusRow(Rect rect, MergeInfo mergeInfo, float y, float lineHeight)
+        {
             var statusRect = new Rect(rect.x, y, rect.width, lineHeight);
-            string statusText = GetStatusText(mergeInfo);
+            string statusText = GetMergeInfoStatus(mergeInfo);
             EditorGUI.LabelField(statusRect, "状态", statusText, InfoStyle);
+            return y + lineHeight + VerticalSpacing;
+        }
 
-            y += lineHeight + 2;
-
-            // 第五行：更新时间
+        private void DrawUpdateTimeRow(Rect rect, MergeInfo mergeInfo, float y, float lineHeight)
+        {
             var timeRect = new Rect(rect.x, y, rect.width, lineHeight);
             EditorGUI.LabelField(timeRect, "更新时间", mergeInfo.GetFormattedUpdateTime(), InfoStyle);
         }
 
-        private void OnAddElement(ReorderableList list)
+        private void OnListElementAdded(ReorderableList list)
         {
-            RecordAndSave("Add merge config");
-            Settings.MergeInfos.Add(new MergeInfo());
+            SaveChanges("添加合并配置");
+            _settings.MergeInfos.Add(new MergeInfo());
+            _serializedObject.Update();
         }
 
-        private void OnRemoveElement(ReorderableList list)
+        private void OnListElementRemoved(ReorderableList list)
         {
-            var mergeInfo = Settings.MergeInfos[list.index];
-            if (EditorUtility.DisplayDialog("删除配置", $"确定要删除配置 \"{mergeInfo.Name}\" 吗？", "删除", "取消"))
+            var mergeInfo = _settings.MergeInfos[list.index];
+            if (EditorUtility.DisplayDialog("删除配置", 
+                $"确定要删除配置 \"{mergeInfo.Name}\" 吗？", "删除", "取消"))
             {
-                RecordAndSave("Remove merge config");
-                Settings.MergeInfos.RemoveAt(list.index);
+                SaveChanges("删除合并配置");
+                _settings.MergeInfos.RemoveAt(list.index);
+                _serializedObject.Update();
             }
         }
 
         #endregion
 
-        #region 辅助方法
+        #region Helper Methods
 
-        private string GetStatusText(MergeInfo mergeInfo)
+        private void RefreshStatus()
         {
-            if (string.IsNullOrEmpty(mergeInfo.InputFolder))
-                return "未配置输入目录";
-
-            if (!Directory.Exists(mergeInfo.InputFolder))
-                return "输入目录不存在";
-
-            int currentFileCount = Directory.GetFiles(mergeInfo.InputFolder, "*.bytes", SearchOption.AllDirectories)
-                .Count(p => !p.EndsWith(".meta"));
-
-            if (currentFileCount == 0)
-                return "目录中无 .bytes 文件";
-
-            bool outputExists = !string.IsNullOrEmpty(mergeInfo.OutputFile) && File.Exists(mergeInfo.OutputFile);
-            string outputStatus = outputExists ? "已生成" : "未生成";
-
-            if (mergeInfo.LastFileCount > 0 && mergeInfo.LastFileCount != currentFileCount)
-                return $"{outputStatus} | {currentFileCount} 个文件 (变化: {currentFileCount - mergeInfo.LastFileCount:+#;-#;0})";
-
-            return $"{outputStatus} | {currentFileCount} 个文件";
+            _serializedObject.Update();
+            GUI.FocusControl(null);
         }
 
-        private void SelectFolder(SerializedProperty inputFolderProp)
+        private void ExecuteSingleMerge(MergeInfo mergeInfo)
         {
-            var path = EditorUtility.OpenFolderPanel("选择输入目录",
-                GetValidDirectory(inputFolderProp.stringValue), "");
-
-            if (!string.IsNullOrEmpty(path))
-            {
-                inputFolderProp.stringValue = ConvertToProjectPath(path);
-            }
-        }
-
-        private void SelectFile(SerializedProperty outputFileProp)
-        {
-            string directory = Application.dataPath;
-            string currentValue = outputFileProp.stringValue;
-            if (!string.IsNullOrEmpty(currentValue))
-            {
-                try
-                {
-                    var dir = Path.GetDirectoryName(currentValue);
-                    if (!string.IsNullOrEmpty(dir))
-                        directory = dir;
-                }
-                catch
-                {
-                    // 忽略无效路径
-                }
-            }
-
-            var path = EditorUtility.SaveFilePanel("选择输出文件",
-                GetValidDirectory(directory), "merged_config", "bytes");
-
-            if (!string.IsNullOrEmpty(path))
-            {
-                outputFileProp.stringValue = ConvertToProjectPath(path);
-            }
-        }
-
-        private string ConvertToProjectPath(string absolutePath)
-        {
-            var normalizedPath = absolutePath.Replace("\\", "/");
-            var normalizedDataPath = Application.dataPath.Replace("\\", "/");
-
-            if (normalizedPath.StartsWith(normalizedDataPath))
-            {
-                return "Assets" + normalizedPath.Substring(normalizedDataPath.Length);
-            }
-            return normalizedPath;
-        }
-
-        private string GetValidDirectory(string path)
-        {
-            if (string.IsNullOrEmpty(path)) return Application.dataPath;
-
-            try
-            {
-                var normalizedPath = path.Replace("\\", "/");
-                return Directory.Exists(normalizedPath) ? normalizedPath : Application.dataPath;
-            }
-            catch
-            {
-                return Application.dataPath;
-            }
-        }
-
-        private bool IsAnyConfigValid()
-        {
-            return Settings.MergeInfos.Any(info =>
-                Directory.Exists(info.InputFolder) &&
-                !string.IsNullOrEmpty(info.OutputFile));
-        }
-
-        private bool IsConfigValid(MergeInfo info)
-        {
-            return Directory.Exists(info.InputFolder) &&
-                   !string.IsNullOrEmpty(info.OutputFile);
+            BytesFileMergerProcessor.GenerateSingle(mergeInfo);
+            AssetDatabase.Refresh();
         }
 
         private void ExecuteMergeAll()
         {
             try
             {
-                SerializedObject.ApplyModifiedProperties();
+                ApplyModifiedProperties();
                 BytesFileMergerProcessor.GenerateManually();
                 EditorUtility.DisplayDialog("合并完成", "所有配置文件已成功合并", "确定");
                 AssetDatabase.Refresh();
@@ -301,29 +333,161 @@ namespace T2F.ConfigTable.EditorExtensions
             }
         }
 
-        private void ShowStatusHelpBox()
+        private void ApplyModifiedProperties()
         {
-            var validConfigs = Settings.MergeInfos.Count(IsConfigValid);
-            var totalConfigs = Settings.MergeInfos.Count;
+            if (_serializedObject.ApplyModifiedProperties())
+            {
+                _settings.SaveConfig();
+            }
+        }
 
-            EditorGUILayout.Space(5);
+        private void SaveChanges(string changeDescription)
+        {
+            Undo.RecordObject(_settings, changeDescription);
+            EditorUtility.SetDirty(_settings);
+            _settings.SaveConfig();
+        }
 
+        private string GetMergeInfoStatus(MergeInfo mergeInfo)
+        {
+            if (string.IsNullOrEmpty(mergeInfo.InputFolder))
+                return "未配置输入目录";
+
+            if (!Directory.Exists(mergeInfo.InputFolder))
+                return "输入目录不存在";
+
+            var bytesFiles = Directory.GetFiles(mergeInfo.InputFolder, "*.bytes", SearchOption.AllDirectories)
+                .Where(p => !p.EndsWith(".meta"));
+            int currentFileCount = bytesFiles.Count();
+
+            if (currentFileCount == 0)
+                return "目录中无 .bytes 文件";
+
+            bool outputExists = !string.IsNullOrEmpty(mergeInfo.OutputFile) && File.Exists(mergeInfo.OutputFile);
+            string outputStatus = outputExists ? "已生成" : "未生成";
+
+            if (mergeInfo.LastFileCount > 0 && mergeInfo.LastFileCount != currentFileCount)
+            {
+                int change = currentFileCount - mergeInfo.LastFileCount;
+                string changeSymbol = change > 0 ? "+" : "";
+                return $"{outputStatus} | {currentFileCount} 个文件 (变化: {changeSymbol}{change})";
+            }
+
+            return $"{outputStatus} | {currentFileCount} 个文件";
+        }
+
+        private string GetStatusMessage()
+        {
+            var totalConfigs = _settings.MergeInfos.Count;
             if (totalConfigs == 0)
+                return "没有配置项，点击 + 按钮添加配置";
+
+            var validConfigs = _settings.MergeInfos.Count(IsConfigurationValid);
+            
+            if (validConfigs == totalConfigs)
+                return $"所有配置项有效 ({validConfigs}/{totalConfigs})";
+            
+            if (validConfigs > 0)
+                return $"部分配置项有效 ({validConfigs}/{totalConfigs})";
+            
+            return "没有有效的配置项，请检查输入目录和输出文件";
+        }
+
+        private MessageType GetStatusMessageType()
+        {
+            var totalConfigs = _settings.MergeInfos.Count;
+            if (totalConfigs == 0)
+                return MessageType.Info;
+
+            var validConfigs = _settings.MergeInfos.Count(IsConfigurationValid);
+            
+            if (validConfigs == totalConfigs)
+                return MessageType.Info;
+            
+            if (validConfigs > 0)
+                return MessageType.Warning;
+            
+            return MessageType.Error;
+        }
+
+        private bool HasValidConfigurations()
+        {
+            return _settings.MergeInfos.Any(IsConfigurationValid);
+        }
+
+        private bool IsConfigurationValid(MergeInfo info)
+        {
+            return Directory.Exists(info.InputFolder) && 
+                   !string.IsNullOrEmpty(info.OutputFile);
+        }
+
+        private void SelectFolder(SerializedProperty inputFolderProp)
+        {
+            string defaultPath = GetValidDirectory(inputFolderProp.stringValue);
+            string path = EditorUtility.OpenFolderPanel("选择输入目录", defaultPath, "");
+            
+            if (!string.IsNullOrEmpty(path))
             {
-                EditorGUILayout.HelpBox("没有配置项，点击 + 按钮添加配置", MessageType.Info);
+                inputFolderProp.stringValue = ConvertToProjectPath(path);
             }
-            else if (validConfigs == totalConfigs)
+        }
+
+        private void SelectFile(SerializedProperty outputFileProp)
+        {
+            string defaultPath = GetValidDirectory(Path.GetDirectoryName(outputFileProp.stringValue));
+            string path = EditorUtility.SaveFilePanel("选择输出文件", defaultPath, "merged_config", "bytes");
+            
+            if (!string.IsNullOrEmpty(path))
             {
-                EditorGUILayout.HelpBox($"所有配置项有效 ({validConfigs}/{totalConfigs})", MessageType.Info);
+                outputFileProp.stringValue = ConvertToProjectPath(path);
             }
-            else if (validConfigs > 0)
+        }
+
+        private string ConvertToProjectPath(string absolutePath)
+        {
+            if (string.IsNullOrEmpty(absolutePath))
+                return absolutePath;
+
+            var normalizedPath = absolutePath.Replace("\\", "/");
+            var normalizedDataPath = Application.dataPath.Replace("\\", "/");
+
+            if (normalizedPath.StartsWith(normalizedDataPath))
             {
-                EditorGUILayout.HelpBox($"部分配置项有效 ({validConfigs}/{totalConfigs})", MessageType.Warning);
+                return "Assets" + normalizedPath.Substring(normalizedDataPath.Length);
             }
-            else
+            
+            return normalizedPath;
+        }
+
+        private string GetValidDirectory(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return Application.dataPath;
+
+            try
             {
-                EditorGUILayout.HelpBox("没有有效的配置项，请检查输入目录和输出文件", MessageType.Error);
+                return Directory.Exists(path) ? path : Application.dataPath;
             }
+            catch
+            {
+                return Application.dataPath;
+            }
+        }
+
+        private void ShowResetConfirmationDialog()
+        {
+            if (EditorUtility.DisplayDialog("重置设置", "确定要重置所有设置为默认值吗？", "重置", "取消"))
+            {
+                ResetToDefault();
+            }
+        }
+
+        private void ResetToDefault()
+        {
+            SaveChanges("重置为默认值");
+            _settings.MergeInfos.Clear();
+            _settings.AutoGenerate = true;
+            _serializedObject.Update();
         }
 
         #endregion

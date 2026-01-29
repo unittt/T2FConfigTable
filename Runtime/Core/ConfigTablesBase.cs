@@ -71,9 +71,11 @@ namespace T2F.ConfigTable
                 return;
             }
 
-            Instance = new TSelf();
-            Instance.BytesDic = bytesDic;
-            Instance.IsLazyMode = false;
+            Instance = new TSelf
+            {
+                BytesDic = bytesDic,
+                IsLazyMode = false
+            };
 
             // 立即加载所有表
             Instance.OnLoad(tableName =>
