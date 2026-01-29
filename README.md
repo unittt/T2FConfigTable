@@ -296,9 +296,7 @@ protected override void OnResolveRef()
 - `{{format_property_name style name}}` - 格式化函数
 
 ## 依赖
-
-- Unity 2022.3+
-- Luban（用于生成配置表代码）
+- [Luban](https://github.com/focus-creative-games/luban)
 
 ## 许可证
 
