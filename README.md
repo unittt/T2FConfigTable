@@ -32,36 +32,27 @@ T2FConfigTable/
 
 ## 安装
 
-### 通过 Git URL 安装
+### 通过 Package Manager 安装
 
-1. 打开 `Packages/manifest.json`
-2. 在 `dependencies` 中添加：
-```json
-{
-  "dependencies": {
-    "com.t2f.configtable": "https://github.com/unittt/T2FConfigTable.git"
-  }
-}
+1. 打开 Unity 编辑器，菜单栏选择 `Window > Package Manager`
+2. 点击左上角 `+` 按钮，选择 `Install package from git URL...`
+3. 输入以下地址并点击 `Install`：
+```
+https://github.com/unittt/T2FConfigTable.git
 ```
 
-3. Unity 会自动下载 T2FConfigTable 及其依赖的 Luban Unity 包
+Unity 会自动下载 T2FConfigTable 及其依赖的 Luban Unity 包。
 
-**也可以指定特定版本或分支：**
-```json
-"com.t2f.configtable": "https://github.com/unittt/T2FConfigTable.git#v1.0.0"
-"com.t2f.configtable": "https://github.com/unittt/T2FConfigTable.git#main"
+**指定版本安装：**
+```
+https://github.com/unittt/T2FConfigTable.git#v1.0.0
 ```
 
 ### 验证安装
 
-安装完成后，在 Unity Package Manager 窗口中应该能看到：
+安装完成后，在 Package Manager 窗口中应该能看到：
 - **T2F Config Table** - 本框架
 - **Luban** (com.code-philosophy.luban) - 运行时库依赖
-
-如果 Luban 包未自动安装，请手动在 `Packages/manifest.json` 中添加：
-```json
-"com.code-philosophy.luban": "https://gitee.com/focus-creative-games/luban_unity.git"
-```
 
 ## 快速开始
 
@@ -325,32 +316,11 @@ protected override void OnResolveRef()
 - `{{if condition}}...{{end}}` - 条件判断
 - `{{format_property_name style name}}` - 格式化函数
 
-## 依赖
-
-### Unity Package Manager 依赖
-
-T2FConfigTable 通过 Git URL 自动引用 Luban Unity 运行时库：
-
-```json
-{
-  "dependencies": {
-    "com.code-philosophy.luban": "https://gitee.com/focus-creative-games/luban_unity.git"
-  }
-}
-```
-
-当你通过 Unity Package Manager 安装 T2FConfigTable 时，Luban Unity 包会自动被下载和引入。
-
 ### 工具依赖
 
-- **Unity 2022.3+**
-- **Luban 代码生成工具** - 用于从配置表定义生成 C# 代码，需单独下载：
+- **Luban 
+- - [Luban Unity 运行时库](https://gitee.com/focus-creative-games/luban_unity)
   - [Luban GitHub](https://github.com/focus-creative-games/luban)
-  - [Luban Gitee](https://gitee.com/focus-creative-games/luban)
-
-**注意**：Luban Unity 包（运行时库）和 Luban 代码生成工具是两个不同的东西：
-- **Luban Unity 包**：运行时依赖，通过 Git URL 自动引入
-- **Luban 工具**：代码生成工具，需要单独下载到项目的 `Tools/Luban/` 目录
 
 ## 许可证
 
