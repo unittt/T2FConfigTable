@@ -318,8 +318,6 @@ protected override void OnResolveRef()
 - `{{format_property_name style name}}` - 格式化函数
 
 ### 工具依赖
-
-- **Luban 
 - - [Luban Unity 运行时库](https://gitee.com/focus-creative-games/luban_unity)
   - [Luban GitHub](https://github.com/focus-creative-games/luban)
 
