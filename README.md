@@ -234,8 +234,8 @@ set OUTPUTCODEDIR=%WORKSPACE%\Assets\Scripts\Runtime\ConfigTable\Gen
 set OUTPUTDATADIR=%WORKSPACE%\Assets\Res\ConfigTable\Gen
 
 :: 根据安装方式选择模板路径
-:: Package Manager 安装使用此路径：
-set TEMPLATEDIR=%WORKSPACE%\Packages\com.t2f.configtable\Templates
+:: Package Manager 安装使用此路径：动态查找 T2FConfigTable 包路径
+:: for /d %%i in ("%WORKSPACE%\Library\PackageCache\com.t2f.configtable@*") do set TEMPLATEDIR=%%i\Templates
 :: Assets 目录安装使用此路径：
 :: set TEMPLATEDIR=%WORKSPACE%\Assets\T2FConfigTable\Templates
 
