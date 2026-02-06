@@ -77,33 +77,6 @@ namespace T2F.ConfigTable
         }
 
         /// <summary>
-        /// 全量解包（用于 Immediate 模式）
-        /// </summary>
-        internal static Dictionary<string, byte[]> UnpackBytes(byte[] mergedBytes)
-        {
-            var index = ParseIndex(mergedBytes);
-            var result = new Dictionary<string, byte[]>(index.Count);
-
-            foreach (var pair in index)
-            {
-                // Immediate 模式需要复制，因为要释放 mergedBytes
-                result[pair.Key] = ExtractTable(mergedBytes, pair.Value);
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// 按需提取单个表数据（复制）
-        /// </summary>
-        internal static byte[] ExtractTable(byte[] mergedBytes, TableIndex index)
-        {
-            var result = new byte[index.Size];
-            Buffer.BlockCopy(mergedBytes, index.Offset, result, 0, index.Size);
-            return result;
-        }
-
-        /// <summary>
         /// 打包为 v3 格式（编辑器使用）
         /// </summary>
         internal static byte[] PackBytes(Dictionary<string, byte[]> fileDict)

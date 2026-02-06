@@ -6,6 +6,32 @@ using UnityEngine;
 namespace T2F.ConfigTable
 {
     /// <summary>
+    /// 内存统计信息
+    /// </summary>
+    public struct MemoryInfo
+    {
+        /// <summary>
+        /// 原始数据大小（字节）
+        /// </summary>
+        public long RawBytesSize;
+
+        /// <summary>
+        /// 待加载数据大小（字节）
+        /// </summary>
+        public long PendingBytesSize;
+
+        /// <summary>
+        /// 索引数量
+        /// </summary>
+        public int IndexCount;
+
+        /// <summary>
+        /// 已加载表数量
+        /// </summary>
+        public int LoadedTableCount;
+    }
+
+    /// <summary>
     /// 配置表容器基类
     /// </summary>
     public abstract class ConfigTablesBase<TSelf> where TSelf : ConfigTablesBase<TSelf>, new()
@@ -23,9 +49,9 @@ namespace T2F.ConfigTable
 
         #region Fields
 
-        private byte[] _rawBytes;                            // 原始数据（Lazy 模式）
-        private Dictionary<string, TableIndex> _tableIndex;  // 索引（Lazy 模式）
-        private Dictionary<string, byte[]> _pendingBytes;    // 解包数据（Immediate/Manual 模式）
+        private byte[] _rawBytes;                            // 原始合并数据（零拷贝模式使用）
+        private Dictionary<string, TableIndex> _tableIndex;  // 表索引（零拷贝模式使用）
+        private Dictionary<string, byte[]> _pendingBytes;    // 待加载的独立表数据
         private HashSet<string> _loadedTables;
         private LoadMode _loadMode = LoadMode.None;
 
@@ -63,18 +89,35 @@ namespace T2F.ConfigTable
         #region Initialization
 
         /// <summary>
-        /// 立即加载所有表
+        /// 初始化配置表（零拷贝）
+        /// </summary>
+        /// <param name="mergedBytes">合并的字节数据</param>
+        /// <param name="lazy">是否延迟加载（true: 首次访问时加载，false: 立即加载所有表）</param>
+        /// <param name="resolveRefs">是否解析引用（仅立即加载模式有效）</param>
+        public static bool Init(byte[] mergedBytes, bool lazy = false, bool resolveRefs = true)
+        {
+            return lazy ? InitLazy(mergedBytes) : InitImmediate(mergedBytes, resolveRefs);
+        }
+
+        /// <summary>
+        /// 立即加载所有表（零拷贝）
         /// </summary>
         /// <param name="mergedBytes">合并的字节数据</param>
         /// <param name="resolveRefs">是否解析引用（无跨表引用时可设为 false）</param>
         public static bool InitImmediate(byte[] mergedBytes, bool resolveRefs = true)
         {
-            if (mergedBytes == null || mergedBytes.Length == 0)
-            {
-                Debug.LogError("[ConfigTables] mergedBytes is null or empty");
+            if (!ValidateBytes(mergedBytes, "mergedBytes") || !CreateInstance(LoadMode.Immediate))
                 return false;
-            }
-            return InitImmediate(BytesFileHandler.UnpackBytes(mergedBytes), resolveRefs);
+
+            // 使用零拷贝方式：只解析索引，OnLoad 时切片
+            Instance._rawBytes = mergedBytes;
+            Instance._tableIndex = BytesFileHandler.ParseIndex(mergedBytes);
+
+            CompleteImmediateInit(resolveRefs);
+
+            // 加载完成后清理索引（rawBytes 保留，被 Table 引用）
+            Instance._tableIndex = null;
+            return true;
         }
 
         /// <summary>
@@ -84,17 +127,21 @@ namespace T2F.ConfigTable
         /// <param name="resolveRefs">是否解析引用（无跨表引用时可设为 false）</param>
         public static bool InitImmediate(Dictionary<string, byte[]> bytesDic, bool resolveRefs = true)
         {
-            if (!CreateInstance(LoadMode.Immediate))
+            if (!ValidateDictionary(bytesDic, "bytesDic") || !CreateInstance(LoadMode.Immediate))
                 return false;
 
             Instance._pendingBytes = bytesDic;
-            Instance.OnLoad(Instance.ConsumeTableBytes);
+            CompleteImmediateInit(resolveRefs);
+            return true;
+        }
 
+        private static void CompleteImmediateInit(bool resolveRefs)
+        {
+            Instance.OnLoad(Instance.ConsumeTableBytes);
             if (resolveRefs)
             {
                 Instance.ResolveAllRefs();
             }
-            return true;
         }
 
         /// <summary>
@@ -105,13 +152,7 @@ namespace T2F.ConfigTable
         /// </remarks>
         public static bool InitLazy(byte[] mergedBytes)
         {
-            if (mergedBytes == null || mergedBytes.Length == 0)
-            {
-                Debug.LogError("[ConfigTables] mergedBytes is null or empty");
-                return false;
-            }
-
-            if (!CreateInstance(LoadMode.Lazy))
+            if (!ValidateBytes(mergedBytes, "mergedBytes") || !CreateInstance(LoadMode.Lazy))
                 return false;
 
             Instance._rawBytes = mergedBytes;
@@ -124,13 +165,7 @@ namespace T2F.ConfigTable
         /// </summary>
         public static bool InitLazy(Dictionary<string, byte[]> bytesDic)
         {
-            if (bytesDic == null || bytesDic.Count == 0)
-            {
-                Debug.LogError("[ConfigTables] bytesDic is null or empty");
-                return false;
-            }
-
-            if (!CreateInstance(LoadMode.Lazy))
+            if (!ValidateDictionary(bytesDic, "bytesDic") || !CreateInstance(LoadMode.Lazy))
                 return false;
 
             Instance._pendingBytes = bytesDic;
@@ -162,6 +197,26 @@ namespace T2F.ConfigTable
                 _loadMode = mode,
                 _loadedTables = new HashSet<string>()
             };
+            return true;
+        }
+
+        private static bool ValidateBytes(byte[] bytes, string paramName)
+        {
+            if (bytes == null || bytes.Length == 0)
+            {
+                Debug.LogError($"[ConfigTables] {paramName} is null or empty");
+                return false;
+            }
+            return true;
+        }
+
+        private static bool ValidateDictionary(Dictionary<string, byte[]> dict, string paramName)
+        {
+            if (dict == null || dict.Count == 0)
+            {
+                Debug.LogError($"[ConfigTables] {paramName} is null or empty");
+                return false;
+            }
             return true;
         }
 
@@ -221,15 +276,9 @@ namespace T2F.ConfigTable
                 return false;
             }
 
-            if (string.IsNullOrEmpty(tableName))
+            if (string.IsNullOrEmpty(tableName) || bytes == null || bytes.Length == 0)
             {
-                Debug.LogError("[ConfigTables] tableName is null or empty");
-                return false;
-            }
-
-            if (bytes == null || bytes.Length == 0)
-            {
-                Debug.LogError($"[ConfigTables] bytes is null or empty: {tableName}");
+                Debug.LogError($"[ConfigTables] Invalid parameters: tableName={tableName ?? "null"}, bytes={(bytes == null ? "null" : bytes.Length.ToString())}");
                 return false;
             }
 
@@ -239,15 +288,9 @@ namespace T2F.ConfigTable
                 return false;
             }
 
-            if (_loadedTables.Contains(tableName))
+            if (_loadedTables.Contains(tableName) || !_pendingBytes.TryAdd(tableName, bytes))
             {
-                Debug.LogWarning($"[ConfigTables] Table already loaded: {tableName}");
-                return false;
-            }
-
-            if (!_pendingBytes.TryAdd(tableName, bytes))
-            {
-                Debug.LogWarning($"[ConfigTables] Table bytes already pending: {tableName}");
+                Debug.LogWarning($"[ConfigTables] Table already exists: {tableName}");
                 return false;
             }
 
@@ -291,6 +334,29 @@ namespace T2F.ConfigTable
         #endregion
 
         #region Memory Management
+
+        /// <summary>
+        /// 获取内存统计信息
+        /// </summary>
+        public MemoryInfo GetMemoryInfo()
+        {
+            long pendingSize = 0;
+            if (_pendingBytes != null)
+            {
+                foreach (var pair in _pendingBytes)
+                {
+                    pendingSize += pair.Value?.Length ?? 0;
+                }
+            }
+
+            return new MemoryInfo
+            {
+                RawBytesSize = _rawBytes?.Length ?? 0,
+                PendingBytesSize = pendingSize,
+                IndexCount = _tableIndex?.Count ?? 0,
+                LoadedTableCount = _loadedTables?.Count ?? 0
+            };
+        }
 
         /// <summary>
         /// 清理待加载的字节缓存（释放内存）

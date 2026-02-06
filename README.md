@@ -5,7 +5,7 @@
 ## 特性
 
 - **多种加载模式** - 立即加载、延迟加载、手动加载，适应不同场景
-- **零拷贝延迟加载** - Lazy 模式使用 ByteBuf 切片，避免内存复制
+- **零拷贝加载** - 使用 ByteBuf 切片，避免内存复制，降低内存峰值
 - **二进制合并** - 将多个 `.bytes` 文件合并为单个文件，减少加载次数
 - **编辑器工具** - 可视化配置管理窗口
 
@@ -37,6 +37,16 @@ https://github.com/unittt/T2FConfigTable.git
 
 ### 3. 初始化配置表
 
+**推荐方式（统一 API）：**
+
+```csharp
+// 立即加载（默认）
+Tables.Init(mergedBytes);
+
+// 延迟加载
+Tables.Init(mergedBytes, true);
+```
+
 **立即加载模式：**
 
 ```csharp
@@ -53,7 +63,7 @@ var item = Tables.Instance.TbItem[1001];  // 首次访问时加载
 // 有跨表引用时手动解析
 Tables.Instance.ResolveAllRefs();
 
-// 所有表加载完成后释放缓存
+// 所有表加载完成后释放索引缓存
 if (Tables.Instance.PendingTableCount == 0)
     Tables.Instance.ClearPendingBytes();
 ```
@@ -67,12 +77,24 @@ var item = Tables.Instance.TbItem[1001];
 Tables.Instance.ResolveAllRefs();
 ```
 
+**内存统计：**
+
+```csharp
+var info = Tables.Instance.GetMemoryInfo();
+Debug.Log($"原始数据: {info.RawBytesSize / 1024}KB");
+Debug.Log($"待加载: {info.PendingBytesSize / 1024}KB");
+Debug.Log($"已加载表: {info.LoadedTableCount}");
+```
+
 ## API 参考
 
 ```csharp
 // 初始化
+static bool Init(byte[] mergedBytes, bool lazy = false, bool resolveRefs = true)
 static bool InitImmediate(byte[] mergedBytes, bool resolveRefs = true)
+static bool InitImmediate(Dictionary<string, byte[]> bytesDic, bool resolveRefs = true)
 static bool InitLazy(byte[] mergedBytes)
+static bool InitLazy(Dictionary<string, byte[]> bytesDic)
 static bool InitManual()
 
 // 属性
@@ -87,6 +109,7 @@ bool AddTableBytes(string tableName, byte[] bytes)  // 仅 Manual 模式
 bool IsTableLoaded(string tableName)
 bool IsTablePending(string tableName)
 void ResolveAllRefs(bool force = false)
+MemoryInfo GetMemoryInfo()
 void ClearPendingBytes()
 static void Release()
 ```
@@ -96,7 +119,7 @@ static void Release()
 | 模式 | 适用场景 | 特点 |
 |------|---------|------|
 | **Immediate** | 生产环境 | 一次性加载所有表，自动解析引用 |
-| **Lazy** | 内存优化、快速启动 | 按需加载，零拷贝切片 |
+| **Lazy** | 快速启动、按需加载 | 首次访问时加载 |
 | **Manual** | 热更新、单表加载 | 完全手动控制 |
 
 ## Luban 模板配置
