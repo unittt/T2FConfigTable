@@ -7,33 +7,27 @@ namespace T2F.ConfigTable
 {
     /// <summary>
     /// 配置表容器基类
-    /// 使用泛型实现框架与业务解耦，业务层的 Tables 类继承此基类即可
-    /// 支持立即加载和延迟加载两种模式
     /// </summary>
-    /// <typeparam name="TSelf">继承类自身的类型</typeparam>
     public abstract class ConfigTablesBase<TSelf> where TSelf : ConfigTablesBase<TSelf>, new()
     {
+        /// <summary>
+        /// 加载模式
+        /// </summary>
+        private enum LoadMode
+        {
+            None = 0,
+            Immediate = 1,
+            Lazy = 2,
+            Manual = 3
+        }
+
         #region Fields
 
-        /// <summary>
-        /// 原始字节数据（延迟加载模式使用）
-        /// </summary>
-        private Dictionary<string, byte[]> _bytesDic;
-
-        /// <summary>
-        /// 已加载的表名集合
-        /// </summary>
-        private readonly HashSet<string> _loadedTables = new();
-
-        /// <summary>
-        /// 原始字节数据是否已释放
-        /// </summary>
-        private bool _rawBytesReleased;
-
-        /// <summary>
-        /// 总表数量（初始化时记录）
-        /// </summary>
-        private int _totalTableCount;
+        private byte[] _rawBytes;                            // 原始数据（Lazy 模式）
+        private Dictionary<string, TableIndex> _tableIndex;  // 索引（Lazy 模式）
+        private Dictionary<string, byte[]> _pendingBytes;    // 解包数据（Immediate/Manual 模式）
+        private HashSet<string> _loadedTables;
+        private LoadMode _loadMode = LoadMode.None;
 
         #endregion
 
@@ -47,274 +41,273 @@ namespace T2F.ConfigTable
         /// <summary>
         /// 是否已初始化
         /// </summary>
-        public static bool IsInitialized => Instance != null;
+        public bool IsInitialized => _loadMode != LoadMode.None;
 
         /// <summary>
-        /// 是否为延迟加载模式
-        /// </summary>
-        public bool IsLazyMode { get; private set; }
-
-        /// <summary>
-        /// 是否已解析引用
+        /// 引用是否已解析
         /// </summary>
         public bool IsRefResolved { get; private set; }
 
         /// <summary>
-        /// 是否可以延迟加载新表
+        /// 已加载的表数量
         /// </summary>
-        public bool CanLazyLoad => IsLazyMode && !_rawBytesReleased && _bytesDic != null;
+        public int LoadedTableCount => _loadedTables?.Count ?? 0;
 
         /// <summary>
-        /// 获取已加载的表数量
+        /// 待加载的表数量
         /// </summary>
-        public int LoadedTableCount => _loadedTables.Count;
-
-        /// <summary>
-        /// 获取总表数量
-        /// </summary>
-        public int TotalTableCount => _totalTableCount;
-
-        /// <summary>
-        /// 获取待加载的表数量
-        /// </summary>
-        public int PendingTableCount => _bytesDic?.Count ?? 0;
+        public int PendingTableCount => _tableIndex?.Count ?? _pendingBytes?.Count ?? 0;
 
         #endregion
 
         #region Initialization
 
         /// <summary>
-        /// 使用合并后的字节数组初始化（立即加载所有表）
+        /// 立即加载所有表
         /// </summary>
-        /// <param name="mergedBytes">合并后的字节数组</param>
-        /// <returns>是否初始化成功</returns>
-        public static bool Init(byte[] mergedBytes)
+        /// <param name="mergedBytes">合并的字节数据</param>
+        /// <param name="resolveRefs">是否解析引用（无跨表引用时可设为 false）</param>
+        public static bool InitImmediate(byte[] mergedBytes, bool resolveRefs = true)
         {
-            if (!CheckCanInit())
-                return false;
-
             if (mergedBytes == null || mergedBytes.Length == 0)
             {
                 Debug.LogError("[ConfigTables] mergedBytes is null or empty");
                 return false;
             }
-
-            var bytesDic = BytesFileHandler.UnpackBytes(mergedBytes);
-            return InitInternal(bytesDic, lazy: false);
+            return InitImmediate(BytesFileHandler.UnpackBytes(mergedBytes), resolveRefs);
         }
 
         /// <summary>
-        /// 使用字节数组字典初始化（立即加载所有表）
+        /// 立即加载所有表
         /// </summary>
-        /// <param name="bytesDic">表名到字节数组的映射</param>
-        /// <returns>是否初始化成功</returns>
-        public static bool Init(Dictionary<string, byte[]> bytesDic)
+        /// <param name="bytesDic">表名到字节的字典</param>
+        /// <param name="resolveRefs">是否解析引用（无跨表引用时可设为 false）</param>
+        public static bool InitImmediate(Dictionary<string, byte[]> bytesDic, bool resolveRefs = true)
         {
-            if (!CheckCanInit())
+            if (!CreateInstance(LoadMode.Immediate))
                 return false;
 
-            return InitInternal(bytesDic, lazy: false);
+            Instance._pendingBytes = bytesDic;
+            Instance.OnLoad(Instance.ConsumeTableBytes);
+
+            if (resolveRefs)
+            {
+                Instance.ResolveAllRefs();
+            }
+            return true;
         }
 
         /// <summary>
-        /// 延迟加载模式初始化（仅存储字节数据，按需加载表）
+        /// 延迟加载模式 - 访问属性时按需加载（内存友好）
         /// </summary>
-        /// <param name="mergedBytes">合并后的字节数组</param>
-        /// <returns>是否初始化成功</returns>
+        /// <remarks>
+        /// 只解析索引，不解包数据，访问时按需提取
+        /// </remarks>
         public static bool InitLazy(byte[] mergedBytes)
         {
-            if (!CheckCanInit())
-                return false;
-
             if (mergedBytes == null || mergedBytes.Length == 0)
             {
                 Debug.LogError("[ConfigTables] mergedBytes is null or empty");
                 return false;
             }
 
-            var bytesDic = BytesFileHandler.UnpackBytes(mergedBytes);
-            return InitInternal(bytesDic, lazy: true);
-        }
-
-        /// <summary>
-        /// 延迟加载模式初始化（仅存储字节数据，按需加载表）
-        /// </summary>
-        /// <param name="bytesDic">表名到字节数组的映射</param>
-        /// <returns>是否初始化成功</returns>
-        public static bool InitLazy(Dictionary<string, byte[]> bytesDic)
-        {
-            if (!CheckCanInit())
+            if (!CreateInstance(LoadMode.Lazy))
                 return false;
 
-            return InitInternal(bytesDic, lazy: true);
+            Instance._rawBytes = mergedBytes;
+            Instance._tableIndex = BytesFileHandler.ParseIndex(mergedBytes);
+            return true;
         }
 
         /// <summary>
-        /// 检查是否可以初始化
+        /// 延迟加载模式 - 从字典初始化
         /// </summary>
-        private static bool CheckCanInit()
+        public static bool InitLazy(Dictionary<string, byte[]> bytesDic)
         {
-            if (Instance == null) return true;
-            Debug.LogWarning("[ConfigTables] Already initialized, call Release() first if you want to reinitialize");
-            return false;
-        }
-
-        /// <summary>
-        /// 内部初始化实现
-        /// </summary>
-        private static bool InitInternal(Dictionary<string, byte[]> bytesDic, bool lazy)
-        {
-            if (bytesDic == null)
+            if (bytesDic == null || bytesDic.Count == 0)
             {
-                Debug.LogError("[ConfigTables] bytesDic is null");
+                Debug.LogError("[ConfigTables] bytesDic is null or empty");
+                return false;
+            }
+
+            if (!CreateInstance(LoadMode.Lazy))
+                return false;
+
+            Instance._pendingBytes = bytesDic;
+            return true;
+        }
+
+        /// <summary>
+        /// 手动加载模式 - 配合 AddTableBytes 使用
+        /// </summary>
+        public static bool InitManual()
+        {
+            if (!CreateInstance(LoadMode.Manual))
+                return false;
+
+            Instance._pendingBytes = new Dictionary<string, byte[]>();
+            return true;
+        }
+
+        private static bool CreateInstance(LoadMode mode)
+        {
+            if (Instance != null)
+            {
+                Debug.LogWarning("[ConfigTables] Already initialized, call Release() first");
                 return false;
             }
 
             Instance = new TSelf
             {
-                _bytesDic = bytesDic,
-                IsLazyMode = lazy,
-                IsRefResolved = false,
-                _rawBytesReleased = false,
-                _totalTableCount = bytesDic.Count
+                _loadMode = mode,
+                _loadedTables = new HashSet<string>()
             };
-
-            if (!lazy)
-            {
-                // 立即加载所有表
-                Instance.OnLoad(tableName =>
-                {
-                    if (!bytesDic.TryGetValue(tableName, out var bytes))
-                    {
-                        Debug.LogError($"[ConfigTables] Table not found: {tableName}");
-                        return null;
-                    }
-                    Instance._loadedTables.Add(tableName);
-                    return new ByteBuf(bytes);
-                });
-
-                // 立即解析引用
-                Instance.OnResolveRef();
-                Instance.IsRefResolved = true;
-
-                // 立即模式下释放字节数据
-                Instance.ReleaseRawBytes();
-            }
-
             return true;
         }
 
         #endregion
 
-        #region Loading
+        #region Table Loading
+
+        private ByteBuf ConsumeTableBytes(string tableName)
+        {
+            // Lazy 模式（v3 索引）：零拷贝切片
+            if (_tableIndex != null && _tableIndex.Remove(tableName, out var index))
+            {
+                _loadedTables.Add(tableName);
+                return BytesFileHandler.SliceTable(_rawBytes, index);
+            }
+
+            // Immediate/Manual 模式或 Lazy(Dictionary) 模式
+            if (_pendingBytes != null && _pendingBytes.Remove(tableName, out var data))
+            {
+                _loadedTables.Add(tableName);
+                return new ByteBuf(data);
+            }
+
+            return null;
+        }
 
         /// <summary>
-        /// 延迟加载单个表
+        /// 延迟加载单个表（由生成代码的属性访问器调用）
         /// </summary>
-        /// <typeparam name="T">表类型</typeparam>
-        /// <param name="field">表字段引用</param>
-        /// <param name="tableName">表名（对应数据文件名，不含扩展名）</param>
-        /// <param name="factory">表构造函数</param>
-        /// <returns>加载后的表实例</returns>
         protected T LoadTableLazy<T>(ref T field, string tableName, Func<ByteBuf, T> factory) where T : class
         {
             if (field != null)
                 return field;
 
-            if (!CanLazyLoad)
+            var byteBuf = ConsumeTableBytes(tableName);
+            if (byteBuf == null)
             {
-                Debug.LogError($"[ConfigTables] Cannot lazy load: {tableName}");
+                Debug.LogError($"[ConfigTables] Table not found: {tableName}");
                 return null;
             }
-
-            var byteBuf = TryTakeTableBytes(tableName);
-            if (byteBuf == null)
-                return null;
 
             field = factory(byteBuf);
             return field;
         }
 
         /// <summary>
-        /// 加载所有未加载的表（延迟模式下使用）
+        /// 添加表字节数据（仅 Manual 模式可用）
         /// </summary>
-        /// <returns>是否成功加载</returns>
-        private bool LoadAllTables()
+        /// <remarks>
+        /// 此方法只添加字节数据到待加载队列，实际加载发生在访问对应表属性时
+        /// </remarks>
+        public bool AddTableBytes(string tableName, byte[] bytes)
         {
-            if (!CanLazyLoad)
+            if (_loadMode != LoadMode.Manual)
             {
-                Debug.LogWarning("[ConfigTables] Cannot load tables");
+                Debug.LogError("[ConfigTables] AddTableBytes only available in Manual mode");
                 return false;
             }
 
-            OnLoad(TryTakeTableBytes);
-
-            // 所有表加载完成后释放字节字典
-            if (_bytesDic is { Count: 0 })
+            if (string.IsNullOrEmpty(tableName))
             {
-                ReleaseRawBytes();
-            }
-
-            return true;
-        }
-
-        /// <summary>
-        /// 解析所有引用关系（延迟模式下需要手动调用）
-        /// 注意：调用前应确保所有相关表已加载
-        /// </summary>
-        /// <returns>是否成功解析</returns>
-        public bool ResolveAllRefs()
-        {
-            if (IsRefResolved)
-            {
-                Debug.LogWarning("[ConfigTables] References already resolved");
-                return true;
-            }
-
-            // 延迟模式下先加载所有表
-            if (IsLazyMode && !LoadAllTables())
-            {
+                Debug.LogError("[ConfigTables] tableName is null or empty");
                 return false;
             }
 
-            OnResolveRef();
-            IsRefResolved = true;
+            if (bytes == null || bytes.Length == 0)
+            {
+                Debug.LogError($"[ConfigTables] bytes is null or empty: {tableName}");
+                return false;
+            }
+
+            if (_pendingBytes == null)
+            {
+                Debug.LogError("[ConfigTables] Not initialized");
+                return false;
+            }
+
+            if (_loadedTables.Contains(tableName))
+            {
+                Debug.LogWarning($"[ConfigTables] Table already loaded: {tableName}");
+                return false;
+            }
+
+            if (!_pendingBytes.TryAdd(tableName, bytes))
+            {
+                Debug.LogWarning($"[ConfigTables] Table bytes already pending: {tableName}");
+                return false;
+            }
+
             return true;
         }
 
         /// <summary>
         /// 检查表是否已加载
         /// </summary>
-        /// <param name="tableName">表名</param>
-        /// <returns>是否已加载</returns>
-        public bool IsTableLoaded(string tableName)
-        {
-            return _loadedTables.Contains(tableName);
-        }
+        public bool IsTableLoaded(string tableName) => _loadedTables?.Contains(tableName) ?? false;
 
         /// <summary>
-        /// 尝试获取表的字节数据（获取后从字典中移除）
+        /// 检查表是否待加载
         /// </summary>
-        /// <param name="tableName">表名</param>
-        /// <returns>字节缓冲区，失败返回 null</returns>
-        private ByteBuf TryTakeTableBytes(string tableName)
+        public bool IsTablePending(string tableName)
         {
-            if (_loadedTables.Contains(tableName))
-                return null;
-
-            if (_bytesDic == null || !_bytesDic.Remove(tableName, out var bytes))
-            {
-                Debug.LogError($"[ConfigTables] Table not found: {tableName}");
-                return null;
-            }
-
-            _loadedTables.Add(tableName);
-            return new ByteBuf(bytes);
+            if (_tableIndex != null)
+                return _tableIndex.ContainsKey(tableName);
+            return _pendingBytes?.ContainsKey(tableName) ?? false;
         }
 
         #endregion
 
-        #region Release
+        #region Reference Resolution
+
+        /// <summary>
+        /// 解析所有引用关系（Lazy/Manual 模式下，需在所有相关表加载后手动调用）
+        /// </summary>
+        public void ResolveAllRefs(bool force = false)
+        {
+            if (!force && IsRefResolved)
+            {
+                Debug.LogWarning("[ConfigTables] References already resolved");
+                return;
+            }
+
+            OnResolveRef();
+            IsRefResolved = true;
+        }
+
+        #endregion
+
+        #region Memory Management
+
+        /// <summary>
+        /// 清理待加载的字节缓存（释放内存）
+        /// </summary>
+        /// <remarks>
+        /// Lazy 模式使用零拷贝切片，rawBytes 被所有已加载的 Table 间接引用。
+        /// 建议在所有需要的表都加载完成后调用此方法。
+        /// 调用后无法再加载未访问的表。
+        /// </remarks>
+        public void ClearPendingBytes()
+        {
+            _rawBytes = null;
+            _tableIndex?.Clear();
+            _tableIndex = null;
+            _pendingBytes?.Clear();
+            _pendingBytes = null;
+        }
 
         /// <summary>
         /// 释放实例
@@ -325,27 +318,13 @@ namespace T2F.ConfigTable
             Instance = null;
         }
 
-        /// <summary>
-        /// 释放原始字节数据（节省内存，但之后无法再延迟加载新表）
-        /// 建议在所有需要的表都加载完成后调用
-        /// </summary>
-        private void ReleaseRawBytes()
-        {
-            if (_rawBytesReleased)
-                return;
-
-            _bytesDic?.Clear();
-            _bytesDic = null;
-            _rawBytesReleased = true;
-        }
-
-        /// <summary>
-        /// 释放时的清理逻辑（子类可重写以添加自定义清理）
-        /// </summary>
         protected virtual void OnRelease()
         {
-            ReleaseRawBytes();
-            _loadedTables.Clear();
+            ClearPendingBytes();
+            _loadedTables?.Clear();
+            _loadedTables = null;
+            _loadMode = LoadMode.None;
+            IsRefResolved = false;
         }
 
         #endregion
@@ -353,14 +332,12 @@ namespace T2F.ConfigTable
         #region Abstract Methods
 
         /// <summary>
-        /// 加载所有配置表（由子类实现）
-        /// loader 返回 null 时表示该表已加载或不存在，子类应跳过该表的赋值
+        /// 加载所有表（由 Luban 生成的子类实现）
         /// </summary>
-        /// <param name="loader">字节加载器，传入表名返回 ByteBuf，返回 null 表示跳过</param>
         protected abstract void OnLoad(Func<string, ByteBuf> loader);
 
         /// <summary>
-        /// 解析引用关系（由子类实现）
+        /// 解析所有引用（由 Luban 生成的子类实现）
         /// </summary>
         protected abstract void OnResolveRef();
 
