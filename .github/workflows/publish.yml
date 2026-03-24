@@ -26,6 +26,18 @@ jobs:
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
         
+      - name: Sync package.json version with tag
+        run: |
+          PACKAGE_VERSION=${{ steps.get_version.outputs.VERSION }}
+          jq --arg v "$PACKAGE_VERSION" '.version = $v' package.json > tmp.json && mv tmp.json package.json
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git diff --cached --quiet || git commit -m "chore: bump version to $PACKAGE_VERSION"
+          git push origin HEAD:main
+          git tag -f "$PACKAGE_VERSION"
+          git push origin "$PACKAGE_VERSION" --force
+
       - name: Create package manifest
         run: |
           # 读取 package.json 内容
