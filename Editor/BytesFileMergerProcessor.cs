@@ -132,6 +132,7 @@ namespace T2F.ConfigTable
                 // 生成合并文件
                 byte[] mergedData = BytesFileHandler.PackBytes(fileDict);
                 File.WriteAllBytes(mergeInfo.OutputFile, mergedData);
+                AssetDatabase.ImportAsset(mergeInfo.OutputFile, ImportAssetOptions.ForceUpdate);   
 
                 // 更新配置信息
                 mergeInfo.LastHash = newHash;
