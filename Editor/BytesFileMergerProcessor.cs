@@ -19,7 +19,7 @@ namespace T2F.ConfigTable
         /// <summary>
         /// 手动触发所有配置的合并
         /// </summary>
-        internal static void GenerateManually()
+        public static void GenerateManually()
         {
             var config = ConfigTableSettings.instance;
             if (config == null) return;
@@ -132,7 +132,6 @@ namespace T2F.ConfigTable
                 // 生成合并文件
                 byte[] mergedData = BytesFileHandler.PackBytes(fileDict);
                 File.WriteAllBytes(mergeInfo.OutputFile, mergedData);
-                AssetDatabase.ImportAsset(mergeInfo.OutputFile, ImportAssetOptions.ForceUpdate);   
 
                 // 更新配置信息
                 mergeInfo.LastHash = newHash;
